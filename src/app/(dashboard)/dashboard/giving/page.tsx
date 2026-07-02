@@ -1,0 +1,113 @@
+import QRCode from "qrcode";
+import { ExternalLink, Download, CreditCard, Smartphone } from "lucide-react";
+import { Topbar } from "@/components/dashboard/topbar";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CopyButton } from "@/components/dashboard/copy-button";
+import { buttonVariants } from "@/components/ui/button";
+import { requireOrgUser } from "@/lib/auth/guards";
+import { assertFeature } from "@/lib/access";
+import { getOrg } from "@/lib/queries/org";
+import { cn } from "@/lib/utils";
+
+export const metadata = { title: "Giving page & QR" };
+
+export default async function GivingPage() {
+  const session = await requireOrgUser();
+  await assertFeature(session.orgId, "qr");
+  const org = await getOrg(session.orgId);
+  const slug = org?.slug ?? "";
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const giveUrl = `${appUrl}/give/${slug}`;
+
+  const qrDataUrl = await QRCode.toDataURL(giveUrl, {
+    width: 640,
+    margin: 1,
+    color: { dark: "#4f46e5", light: "#ffffff" },
+  });
+
+  return (
+    <>
+      <Topbar title="Giving page & QR" user={{ name: session.name, email: session.email }} />
+      <main className="grid gap-6 p-6 lg:grid-cols-[1fr_360px]">
+        {/* link + how it works */}
+        <div className="flex flex-col gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Your public donation page</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Share this link or QR code. Anyone can give without an account — they enter their
+                name and address right after paying, and a receipt is generated automatically.
+              </p>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/50 px-3.5 py-2.5">
+                <span className="truncate text-sm font-medium">{giveUrl}</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <CopyButton value={giveUrl} />
+                <a
+                  href={giveUrl}
+                  target="_blank"
+                  rel="noopener"
+                  className={buttonVariants({ variant: "outline", size: "sm" })}
+                >
+                  <ExternalLink className="size-4" /> Open page
+                </a>
+                <a
+                  href={`${giveUrl}?pos=wevend`}
+                  target="_blank"
+                  rel="noopener"
+                  className={buttonVariants({ variant: "outline", size: "sm" })}
+                >
+                  <CreditCard className="size-4" /> POS (We Vend) mode
+                </a>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Ways to collect donations</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4 sm:grid-cols-3">
+              {[
+                { icon: Smartphone, title: "Scan QR", body: "Print the QR for pews, entrances, and bulletins." },
+                { icon: ExternalLink, title: "Share link", body: "Post it on your website, email, and socials." },
+                { icon: CreditCard, title: "POS (We Vend)", body: "Take in-person card donations on your We Vend POS terminal." },
+              ].map((w) => (
+                <div key={w.title} className="flex flex-col gap-2">
+                  <span className="grid size-10 place-items-center rounded-xl bg-brand-50 text-brand-600">
+                    <w.icon className="size-5" />
+                  </span>
+                  <p className="font-medium">{w.title}</p>
+                  <p className="text-sm text-muted-foreground">{w.body}</p>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* QR card */}
+        <Card className="h-fit">
+          <CardHeader>
+            <CardTitle>Your QR code</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col items-center gap-4">
+            <div className="rounded-2xl border border-border p-4">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={qrDataUrl} alt="Donation QR code" width={240} height={240} />
+            </div>
+            <a
+              href={qrDataUrl}
+              download={`kindpath-qr-${slug}.png`}
+              className={cn(buttonVariants({ size: "sm" }), "w-full")}
+            >
+              <Download className="size-4" /> Download QR (PNG)
+            </a>
+          </CardContent>
+        </Card>
+      </main>
+    </>
+  );
+}

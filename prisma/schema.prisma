@@ -1,0 +1,659 @@
+// KindPath data model. See docs/04_DATA_MODEL.md for the narrative version.
+// Multi-tenant: every tenant table carries orgId and is protected by Postgres RLS
+// (policies live in prisma/sql/rls.sql, applied after migrate).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- enums ----------
+enum CharityStatus {
+  registered
+  non_registered
+}
+
+enum ReceiptMode {
+  per_gift
+  annual
+  both
+}
+
+enum OrgStatus {
+  active
+  suspended
+  archived
+}
+
+enum OrgUserRole {
+  org_admin
+  signatory
+  staff
+}
+
+enum PlatformRole {
+  super_admin
+  support
+}
+
+enum SubscriptionPlan {
+  starter
+  community
+  enterprise
+}
+
+enum BillingCycle {
+  monthly
+  annual
+}
+
+enum SubscriptionStatus {
+  trialing
+  active
+  past_due
+  cancelled
+}
+
+enum AddressStatus {
+  complete
+  pending
+}
+
+enum CaslConsent {
+  express
+  implied
+  none
+}
+
+enum PaymentMethodType {
+  card
+  bank
+}
+
+enum PaymentMethodStatus {
+  active
+  expired
+  removed
+}
+
+enum Frequency {
+  weekly
+  monthly
+  quarterly
+  annual
+}
+
+enum PlanStatus {
+  active
+  paused
+  cancelled
+  suspended
+}
+
+enum DonationType {
+  one_time
+  recurring
+  cash
+  cheque
+}
+
+enum DonationStatus {
+  pending
+  succeeded
+  failed
+  refunded
+  partially_refunded
+}
+
+enum ReceiptType {
+  official
+  confirmation
+  annual
+}
+
+enum ReceiptStatus {
+  issued
+  voided
+  replaced
+}
+
+enum NotificationChannel {
+  email
+  sms
+}
+
+enum NotificationStatus {
+  queued
+  sent
+  failed
+}
+
+enum CampaignStatus {
+  draft
+  active
+  closed
+}
+
+enum EventStatus {
+  draft
+  published
+  closed
+}
+
+enum PledgeStatus {
+  open
+  fulfilled
+  cancelled
+}
+
+// ---------- global (non-tenant) ----------
+model PlatformAdmin {
+  id           String       @id @default(uuid())
+  email        String       @unique
+  passwordHash String       @map("password_hash")
+  name         String
+  role         PlatformRole @default(super_admin)
+  status       String       @default("active")
+  lastLoginAt  DateTime?    @map("last_login_at")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  @@map("platform_admins")
+}
+
+model WebhookEvent {
+  id              String    @id @default(uuid())
+  providerEventId String    @unique @map("provider_event_id")
+  type            String
+  payload         Json
+  status          String    @default("received")
+  processedAt     DateTime? @map("processed_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@map("webhook_events")
+}
+
+// ---------- tenant root ----------
+model Organization {
+  id                     String        @id @default(uuid())
+  name                   String
+  slug                   String        @unique
+  logoUrl                String?       @map("logo_url")
+  primaryColor           String?       @map("primary_color")
+  addressLine1           String?       @map("address_line1")
+  addressLine2           String?       @map("address_line2")
+  city                   String?
+  province               String?
+  postalCode             String?       @map("postal_code")
+  country                String        @default("CA")
+  charityStatus          CharityStatus @default(non_registered) @map("charity_status")
+  craRegistrationNumber  String?       @map("cra_registration_number")
+  authorizedSignatory    String?       @map("authorized_signatory_name")
+  signatorySignatureUrl  String?       @map("signatory_signature_url")
+  receiptMode            ReceiptMode   @default(per_gift) @map("receipt_mode")
+  minReceiptAmount       Decimal       @default(0) @map("min_receipt_amount") @db.Decimal(10, 2)
+  receiptLocality        String?       @map("receipt_locality")
+  defaultCurrency        String        @default("CAD") @map("default_currency")
+  posCredentialsRef      String?       @map("pos_credentials_ref")
+  featureOverrides       Json?         @map("feature_overrides")
+  receiptMessage         String?       @map("receipt_message")
+  receiptFooter          String?       @map("receipt_footer")
+  receiptPrefix          String?       @map("receipt_prefix")
+  status                 OrgStatus     @default(active)
+  onboardedAt            DateTime?     @map("onboarded_at")
+  createdAt              DateTime      @default(now()) @map("created_at")
+  updatedAt              DateTime      @updatedAt @map("updated_at")
+
+  users             OrgUser[]
+  subscription      Subscription?
+  subscriptionInvoices SubscriptionInvoice[]
+  donors            Donor[]
+  funds             Fund[]
+  recurringPlans    RecurringPlan[]
+  donations         Donation[]
+  receipts          Receipt[]
+  campaigns         Campaign[]
+  membershipPlans   MembershipPlan[]
+  events            Event[]
+  pledges           Pledge[]
+  receiptSequences  ReceiptSequence[]
+  notifications     Notification[]
+  paymentMethods    DonorPaymentMethod[]
+  volunteers        Volunteer[]
+  volunteerPasses   VolunteerPass[]
+
+  @@map("organizations")
+}
+
+model OrgUser {
+  id           String      @id @default(uuid())
+  orgId        String      @map("org_id")
+  email        String
+  passwordHash String      @map("password_hash")
+  name         String
+  role         OrgUserRole @default(org_admin)
+  status       String      @default("active")
+  lastLoginAt  DateTime?   @map("last_login_at")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, email])
+  @@index([orgId])
+  @@map("org_users")
+}
+
+model Subscription {
+  id                 String             @id @default(uuid())
+  orgId              String             @unique @map("org_id")
+  plan               SubscriptionPlan   @default(starter)
+  cycle              BillingCycle       @default(monthly)
+  priceCad           Decimal            @map("price_cad") @db.Decimal(10, 2)
+  status             SubscriptionStatus @default(trialing)
+  currentPeriodStart DateTime?          @map("current_period_start")
+  currentPeriodEnd   DateTime?          @map("current_period_end")
+  nextBillingDate    DateTime?          @map("next_billing_date")
+  trialEndsAt        DateTime?          @map("trial_ends_at")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+model SubscriptionInvoice {
+  id            String   @id @default(uuid())
+  orgId         String   @map("org_id")
+  invoiceNumber String   @unique @map("invoice_number")
+  subtotal      Decimal  @db.Decimal(10, 2)
+  taxRate       Decimal  @map("tax_rate") @db.Decimal(5, 4)
+  taxAmount     Decimal  @map("tax_amount") @db.Decimal(10, 2)
+  total         Decimal  @db.Decimal(10, 2)
+  province      String?
+  status        String   @default("draft")
+  issuedAt      DateTime @default(now()) @map("issued_at")
+  pdfUrl        String?  @map("pdf_url")
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@map("subscription_invoices")
+}
+
+model Donor {
+  id              String        @id @default(uuid())
+  orgId           String        @map("org_id")
+  firstName       String        @map("first_name")
+  middleInitial   String?       @map("middle_initial")
+  lastName        String        @map("last_name")
+  email           String
+  phone           String?
+  addressLine1    String?       @map("address_line1")
+  addressLine2    String?       @map("address_line2")
+  city            String?
+  province        String?
+  postalCode      String?       @map("postal_code")
+  country         String        @default("CA")
+  addressStatus   AddressStatus @default(pending) @map("address_status")
+  caslConsent     CaslConsent   @default(none) @map("casl_consent_status")
+  caslConsentAt   DateTime?     @map("casl_consent_at")
+  caslConsentSource String?     @map("casl_consent_source")
+  emailMarketingOptIn Boolean   @default(false) @map("email_marketing_opt_in")
+  smsMarketingOptIn   Boolean   @default(false) @map("sms_marketing_opt_in")
+  notes           String?
+  // donor self-service auth (optional)
+  passwordHash    String?       @map("password_hash")
+  googleId        String?       @map("google_id")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  org            Organization         @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  paymentMethods DonorPaymentMethod[]
+  recurringPlans RecurringPlan[]
+  donations      Donation[]
+  receipts       Receipt[]
+
+  @@unique([orgId, email])
+  @@index([orgId])
+  @@map("donors")
+}
+
+model DonorPaymentMethod {
+  id            String              @id @default(uuid())
+  orgId         String              @map("org_id")
+  donorId       String              @map("donor_id")
+  providerToken String              @map("provider_token")
+  type          PaymentMethodType   @default(card)
+  brand         String?
+  last4         String?
+  expMonth      Int?                @map("exp_month")
+  expYear       Int?                @map("exp_year")
+  isDefault     Boolean             @default(false) @map("is_default")
+  status        PaymentMethodStatus @default(active)
+  createdAt     DateTime            @default(now()) @map("created_at")
+
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  donor Donor        @relation(fields: [donorId], references: [id], onDelete: Cascade)
+  recurringPlans RecurringPlan[]
+
+  @@index([orgId, donorId])
+  @@map("donor_payment_methods")
+}
+
+model Fund {
+  id          String   @id @default(uuid())
+  orgId       String   @map("org_id")
+  name        String
+  code        String?
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  org            Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  recurringPlans RecurringPlan[]
+  donations      Donation[]
+  campaigns      Campaign[]
+
+  @@index([orgId])
+  @@map("funds")
+}
+
+model RecurringPlan {
+  id                  String     @id @default(uuid())
+  orgId               String     @map("org_id")
+  donorId             String     @map("donor_id")
+  fundId              String?    @map("fund_id")
+  membershipPlanId    String?    @map("membership_plan_id")
+  paymentMethodId     String?    @map("payment_method_id")
+  amount              Decimal    @db.Decimal(10, 2)
+  currency            String     @default("CAD")
+  frequency           Frequency  @default(monthly)
+  billingDay          Int?       @map("billing_day")
+  nextBillingDate     DateTime?  @map("next_billing_date")
+  status              PlanStatus @default(active)
+  retryCount          Int        @default(0) @map("retry_count")
+  providerRecurringRef String?   @map("provider_recurring_ref")
+  startedAt           DateTime   @default(now()) @map("started_at")
+  cancelledAt         DateTime?  @map("cancelled_at")
+
+  org            Organization        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  donor          Donor               @relation(fields: [donorId], references: [id], onDelete: Cascade)
+  fund           Fund?               @relation(fields: [fundId], references: [id])
+  membershipPlan MembershipPlan?     @relation(fields: [membershipPlanId], references: [id])
+  paymentMethod  DonorPaymentMethod? @relation(fields: [paymentMethodId], references: [id])
+  donations      Donation[]
+
+  @@index([orgId, status, nextBillingDate])
+  @@map("recurring_plans")
+}
+
+model Donation {
+  id                   String         @id @default(uuid())
+  orgId                String         @map("org_id")
+  donorId              String         @map("donor_id")
+  fundId               String?        @map("fund_id")
+  recurringPlanId      String?        @map("recurring_plan_id")
+  campaignId           String?        @map("campaign_id")
+  eventId              String?        @map("event_id")
+  type                 DonationType   @default(one_time)
+  amount               Decimal        @db.Decimal(10, 2)
+  advantageValue       Decimal        @default(0) @map("advantage_value") @db.Decimal(10, 2)
+  advantageDescription String?        @map("advantage_description")
+  eligibleAmount       Decimal        @map("eligible_amount") @db.Decimal(10, 2)
+  currency             String         @default("CAD")
+  status               DonationStatus @default(pending)
+  paymentMethodId      String?        @map("payment_method_id")
+  providerChargeRef    String?        @map("provider_charge_ref")
+  receivedAt           DateTime       @default(now()) @map("received_at")
+  createdAt            DateTime       @default(now()) @map("created_at")
+
+  org           Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  donor         Donor          @relation(fields: [donorId], references: [id], onDelete: Cascade)
+  fund          Fund?          @relation(fields: [fundId], references: [id])
+  recurringPlan RecurringPlan? @relation(fields: [recurringPlanId], references: [id])
+  campaign      Campaign?      @relation(fields: [campaignId], references: [id])
+  event         Event?         @relation(fields: [eventId], references: [id])
+  receipt       Receipt?
+
+  @@index([orgId, receivedAt])
+  @@index([orgId, donorId])
+  @@index([orgId, fundId])
+  @@index([orgId, campaignId])
+  @@index([orgId, eventId])
+  @@map("donations")
+}
+
+model Campaign {
+  id          String         @id @default(uuid())
+  orgId       String         @map("org_id")
+  fundId      String?        @map("fund_id")
+  title       String
+  slug        String
+  description String?
+  goalAmount  Decimal        @map("goal_amount") @db.Decimal(12, 2)
+  deadline    DateTime?
+  status      CampaignStatus @default(active)
+  accent      String?        // emoji or short label for the cover
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  fund      Fund?        @relation(fields: [fundId], references: [id])
+  donations Donation[]
+  pledges   Pledge[]
+
+  @@unique([orgId, slug])
+  @@index([orgId])
+  @@map("campaigns")
+}
+
+model Pledge {
+  id         String       @id @default(uuid())
+  orgId      String       @map("org_id")
+  campaignId String?      @map("campaign_id")
+  donorName  String       @map("donor_name")
+  donorEmail String?      @map("donor_email")
+  amount     Decimal      @db.Decimal(12, 2)
+  status     PledgeStatus @default(open)
+  dueDate    DateTime?    @map("due_date")
+  note       String?
+  createdAt  DateTime     @default(now()) @map("created_at")
+
+  org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  campaign Campaign?    @relation(fields: [campaignId], references: [id])
+
+  @@index([orgId])
+  @@map("pledges")
+}
+
+model MembershipPlan {
+  id          String       @id @default(uuid())
+  orgId       String       @map("org_id")
+  name        String
+  description String?
+  amount      Decimal      @db.Decimal(10, 2)
+  frequency   Frequency    @default(annual)
+  isActive    Boolean      @default(true) @map("is_active")
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  org   Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  plans RecurringPlan[]
+
+  @@index([orgId])
+  @@map("membership_plans")
+}
+
+model Event {
+  id          String      @id @default(uuid())
+  orgId       String      @map("org_id")
+  title       String
+  slug        String
+  description String?
+  location    String?
+  startsAt    DateTime?   @map("starts_at")
+  status      EventStatus @default(published)
+  accent      String?
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  ticketTypes TicketType[]
+  donations   Donation[]
+
+  @@unique([orgId, slug])
+  @@index([orgId])
+  @@map("events")
+}
+
+model TicketType {
+  id             String  @id @default(uuid())
+  orgId          String  @map("org_id")
+  eventId        String  @map("event_id")
+  name           String
+  price          Decimal @db.Decimal(10, 2)
+  advantageValue Decimal @default(0) @map("advantage_value") @db.Decimal(10, 2)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, eventId])
+  @@map("ticket_types")
+}
+
+model Receipt {
+  id                    String        @id @default(uuid())
+  orgId                 String        @map("org_id")
+  donationId            String?       @unique @map("donation_id")
+  donorId               String        @map("donor_id")
+  serialNumber          String        @map("serial_number")
+  documentType          ReceiptType   @default(official) @map("document_type")
+  donorNameSnapshot     String        @map("donor_name_snapshot")
+  donorAddressSnapshot  String        @map("donor_address_snapshot")
+  orgNameSnapshot       String        @map("org_name_snapshot")
+  orgRegNumberSnapshot  String?       @map("org_reg_number_snapshot")
+  amount                Decimal       @db.Decimal(10, 2)
+  advantageValue        Decimal       @default(0) @map("advantage_value") @db.Decimal(10, 2)
+  eligibleAmount        Decimal       @map("eligible_amount") @db.Decimal(10, 2)
+  placeIssued           String?       @map("place_issued")
+  dateDonationReceived  DateTime      @map("date_donation_received")
+  dateIssued            DateTime      @default(now()) @map("date_issued")
+  signatoryNameSnapshot String?       @map("signatory_name_snapshot")
+  status                ReceiptStatus @default(issued)
+  voidReason            String?       @map("void_reason")
+  replacesSerial        String?       @map("replaces_serial")
+  pdfUrl                String?       @map("pdf_url")
+  year                  Int
+
+  org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  donation Donation?    @relation(fields: [donationId], references: [id])
+  donor    Donor        @relation(fields: [donorId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, serialNumber])
+  @@index([orgId, donorId, year])
+  @@map("receipts")
+}
+
+model ReceiptSequence {
+  orgId      String @map("org_id")
+  year       Int
+  lastNumber Int    @default(0) @map("last_number")
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@id([orgId, year])
+  @@map("receipt_sequences")
+}
+
+model Notification {
+  id          String              @id @default(uuid())
+  orgId       String              @map("org_id")
+  donorId     String?             @map("donor_id")
+  channel     NotificationChannel @default(email)
+  category    String
+  status      NotificationStatus  @default(queued)
+  caslChecked Boolean             @default(false) @map("casl_checked")
+  providerRef String?             @map("provider_ref")
+  sentAt      DateTime?           @map("sent_at")
+  payload     Json?
+  createdAt   DateTime            @default(now()) @map("created_at")
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  orgId      String?  @map("org_id")
+  actorType  String   @map("actor_type")
+  actorId    String?  @map("actor_id")
+  action     String
+  entityType String?  @map("entity_type")
+  entityId   String?  @map("entity_id")
+  before     Json?
+  after      Json?
+  ip         String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([orgId])
+  @@map("audit_log")
+}
+
+enum VolunteerStatus {
+  active
+  inactive
+}
+
+enum PassStatus {
+  active
+  revoked
+}
+
+model Volunteer {
+  id           String          @id @default(uuid())
+  orgId        String          @map("org_id")
+  firstName    String          @map("first_name")
+  lastName     String          @map("last_name")
+  email        String
+  phone        String?
+  role         String?
+  notes        String?
+  status       VolunteerStatus @default(active)
+  passwordHash String?         @map("password_hash")
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+
+  org    Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  passes VolunteerPass[]
+
+  @@unique([orgId, email])
+  @@index([orgId])
+  @@map("volunteers")
+}
+
+model VolunteerPass {
+  id          String     @id @default(uuid())
+  orgId       String     @map("org_id")
+  volunteerId String     @map("volunteer_id")
+  title       String
+  serial      String     @unique
+  validFrom   DateTime   @map("valid_from")
+  validUntil  DateTime?  @map("valid_until")
+  status      PassStatus @default(active)
+  issuedAt    DateTime   @default(now()) @map("issued_at")
+  revokedAt   DateTime?  @map("revoked_at")
+
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  volunteer Volunteer    @relation(fields: [volunteerId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([volunteerId])
+  @@map("volunteer_passes")
+}

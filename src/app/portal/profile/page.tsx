@@ -1,0 +1,51 @@
+import { Topbar } from "@/components/dashboard/topbar";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ProfileForm } from "@/components/portal/profile-form";
+import { requireDonor } from "@/lib/auth/guards";
+import { getDonorProfile } from "@/lib/queries/donor";
+
+export const metadata = { title: "Profile" };
+
+export default async function ProfilePage() {
+  const session = await requireDonor();
+  const donor = await getDonorProfile(session.orgId, session.sub);
+
+  return (
+    <>
+      <Topbar title="Profile" user={{ name: session.name, email: session.email }} />
+      <main className="flex flex-col gap-6 p-6">
+        <Card className="max-w-2xl">
+          <CardHeader>
+            <CardTitle>Your details</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-5">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="flex flex-col gap-2">
+                <Label>Name</Label>
+                <Input
+                  defaultValue={donor ? `${donor.firstName} ${donor.lastName}` : ""}
+                  disabled
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label>Email</Label>
+                <Input defaultValue={donor?.email ?? ""} disabled />
+              </div>
+            </div>
+            <ProfileForm
+              phone={donor?.phone}
+              addressLine1={donor?.addressLine1}
+              city={donor?.city}
+              province={donor?.province}
+              postalCode={donor?.postalCode}
+              emailMarketing={donor?.emailMarketingOptIn ?? false}
+              smsMarketing={donor?.smsMarketingOptIn ?? false}
+            />
+          </CardContent>
+        </Card>
+      </main>
+    </>
+  );
+}

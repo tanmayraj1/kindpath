@@ -1,0 +1,179 @@
+"use client";
+
+import { useState } from "react";
+import { useFormState } from "react-dom";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
+import { updateOrgSettings, type ActionState } from "@/app/(dashboard)/dashboard/actions";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { SubmitButton } from "@/components/auth/submit-button";
+
+const initial: ActionState = {};
+
+type Props = {
+  name: string;
+  charityStatus: "registered" | "non_registered";
+  craRegistrationNumber?: string | null;
+  authorizedSignatory?: string | null;
+  receiptLocality?: string | null;
+  logoUrl?: string | null;
+  primaryColor?: string | null;
+  receiptMessage?: string | null;
+  receiptFooter?: string | null;
+  receiptPrefix?: string | null;
+};
+
+export function SettingsForm(props: Props) {
+  const [state, action] = useFormState(updateOrgSettings, initial);
+  const [status, setStatus] = useState(props.charityStatus);
+
+  return (
+    <form action={action} className="flex flex-col gap-5">
+      {state.error && (
+        <div className="flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
+          <AlertCircle className="size-4 shrink-0" />
+          {state.error}
+        </div>
+      )}
+      {state.ok && (
+        <div className="flex items-center gap-2 rounded-lg border border-success/20 bg-success/5 px-3 py-2.5 text-sm text-success">
+          <CheckCircle2 className="size-4 shrink-0" />
+          Settings saved.
+        </div>
+      )}
+
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="name">Organization name</Label>
+        <Input id="name" name="name" defaultValue={props.name} required />
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="charityStatus">Charity status</Label>
+        <select
+          id="charityStatus"
+          name="charityStatus"
+          defaultValue={props.charityStatus}
+          onChange={(e) => setStatus(e.target.value as Props["charityStatus"])}
+          className="flex h-11 w-full rounded-lg border border-input bg-background px-3.5 text-sm focus-visible:border-brand-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+        >
+          <option value="registered">Registered charity (issues official tax receipts)</option>
+          <option value="non_registered">Not a registered charity (issues payment confirmations)</option>
+        </select>
+        <p className="text-xs text-muted-foreground">
+          Only registered charities may issue official CRA donation receipts.
+        </p>
+      </div>
+
+      {status === "registered" && (
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="craRegistrationNumber">CRA registration number (BN/RR)</Label>
+          <Input
+            id="craRegistrationNumber"
+            name="craRegistrationNumber"
+            placeholder="123456789 RR 0001"
+            defaultValue={props.craRegistrationNumber ?? ""}
+          />
+        </div>
+      )}
+
+      <div className="grid gap-5 sm:grid-cols-2">
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="authorizedSignatory">Authorized signatory</Label>
+          <Input
+            id="authorizedSignatory"
+            name="authorizedSignatory"
+            placeholder="Rev. Thomas Allen"
+            defaultValue={props.authorizedSignatory ?? ""}
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="receiptLocality">Place issued (locality)</Label>
+          <Input
+            id="receiptLocality"
+            name="receiptLocality"
+            placeholder="Toronto, ON"
+            defaultValue={props.receiptLocality ?? ""}
+          />
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border p-4">
+        <p className="text-sm font-medium">Branding (your public donation page)</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Your logo and brand color appear on your donation page and campaigns.
+        </p>
+        <div className="mt-3 grid gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="logoUrl">Logo URL (https)</Label>
+            <Input
+              id="logoUrl"
+              name="logoUrl"
+              placeholder="https://…/logo.png"
+              defaultValue={props.logoUrl ?? ""}
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="primaryColor">Brand color (hex)</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="primaryColor"
+                name="primaryColor"
+                placeholder="#4f46e5"
+                defaultValue={props.primaryColor ?? ""}
+              />
+              <span
+                aria-hidden
+                className="size-9 shrink-0 rounded-lg border border-border"
+                style={{ background: props.primaryColor ?? "#4f46e5" }}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border p-4">
+        <p className="text-sm font-medium">Receipt customization</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Appears on the tax receipts / confirmations donors download (alongside your logo &amp; color).
+        </p>
+        <div className="mt-3 flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="receiptMessage">Thank-you message</Label>
+            <Input
+              id="receiptMessage"
+              name="receiptMessage"
+              placeholder="Thank you for supporting our community."
+              defaultValue={props.receiptMessage ?? ""}
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="receiptFooter">Footer note</Label>
+            <Input
+              id="receiptFooter"
+              name="receiptFooter"
+              placeholder="Questions? Contact office@yourorg.org"
+              defaultValue={props.receiptFooter ?? ""}
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="receiptPrefix">Receipt number prefix</Label>
+            <Input
+              id="receiptPrefix"
+              name="receiptPrefix"
+              placeholder="STM-"
+              defaultValue={props.receiptPrefix ?? ""}
+            />
+            <p className="text-xs text-muted-foreground">
+              Optional. Receipts will be numbered like{" "}
+              <span className="font-mono">{(props.receiptPrefix ?? "STM-") + "2026-000123"}</span>.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <SubmitButton>Save settings</SubmitButton>
+      </div>
+    </form>
+  );
+}
