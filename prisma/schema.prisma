@@ -238,6 +238,9 @@ model OrgUser {
   role         OrgUserRole @default(org_admin)
   status       String      @default("active")
   lastLoginAt  DateTime?   @map("last_login_at")
+  totpSecret         String?   @map("totp_secret")
+  totpEnabledAt      DateTime? @map("totp_enabled_at")
+  totpRecoveryCodes  String[]  @default([]) @map("totp_recovery_codes")
   createdAt    DateTime    @default(now()) @map("created_at")
   updatedAt    DateTime    @updatedAt @map("updated_at")
 

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Repeat, CalendarClock, HandCoins, Download } from "lucide-react";
+import { Repeat, CalendarClock, HandCoins, Download, AlertTriangle } from "lucide-react";
 import { Topbar } from "@/components/dashboard/topbar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -45,6 +45,28 @@ export default async function PortalOverview() {
             Your giving to {data.orgName}.
           </p>
         </div>
+
+        {data.attentionPlans > 0 && (
+          <Link
+            href="/portal/recurring"
+            className="flex items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4 transition-colors hover:bg-destructive/10"
+          >
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 size-5 shrink-0 text-destructive" />
+              <div className="text-sm">
+                <p className="font-semibold text-destructive">
+                  {data.attentionPlans === 1
+                    ? "A recurring gift needs attention"
+                    : `${data.attentionPlans} recurring gifts need attention`}
+                </p>
+                <p className="text-muted-foreground">
+                  A payment didn&apos;t go through — review and retry it.
+                </p>
+              </div>
+            </div>
+            <span className="shrink-0 text-sm font-medium text-brand-600">Review →</span>
+          </Link>
+        )}
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {stats.map((s) => (

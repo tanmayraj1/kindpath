@@ -24,7 +24,11 @@ orgs issue **payment confirmations**. Split-receipting: `eligibleAmount = amount
   `src/app/globals.css` + `tailwind.config.ts`; brand = trust indigo, Sora display + Inter body).
 - **PostgreSQL 16** in Docker (container `kindpath-pg`, host port **5433**) + **Prisma 6.19.3**.
 - **Auth**: custom JWT (jose HS256) single httpOnly cookie `kindpath_session` with a `kind` claim
-  (`platform` | `org` | `donor`); bcrypt passwords. NOT NextAuth.
+  (`platform` | `org` | `donor` | `volunteer`); bcrypt passwords. NOT NextAuth. **2FA (TOTP)** for org
+  users: RFC 6238 implemented on Node crypto in `src/lib/auth/totp.ts` (no dep; base32, HOTP/TOTP,
+  ±1-step window, otpauth URL, recovery codes); login issues a short-lived `kindpath_2fa` ticket cookie
+  (`twofa-ticket.ts`) → `/login/2fa` challenge → full session. Enable/disable at `/dashboard/security`
+  (QR enrol + 10 one-time recovery codes, hashed). Tested vs RFC vectors + full login/challenge flow.
 - **PDF**: `@react-pdf/renderer`. **QR**: `qrcode`. **Email**: Resend HTTP API (console fallback in dev).
 - Tests: **vitest** (`npm test`, 29 passing).
 
@@ -80,7 +84,7 @@ detail, create, close), **Pledges** (record/fulfill/cancel + totals), **Membersh
 roster), **Events** (create + ticket types + registrations), Receipts (+ **annual consolidated
 generate**, void, PDF), Reports (12-mo trend, top donors, **CSV exports** `/api/export/[type]`),
 Communications (**CASL-gated campaign composer** w/ segments), **AI assistant** (`/dashboard/assistant`),
-**Team** (invite/roles/disable, org_admin-only), Settings (org + **white-label branding**: logo URL +
+**Team** (invite/roles/disable, org_admin-only), **Security** (2FA/TOTP enrol + recovery codes), Settings (org + **white-label branding**: logo URL +
 brand color + receipt message/footer/**serial prefix**).
 
 **Volunteers** (feature key `volunteers`, community+enterprise): `/dashboard/volunteers` — roster
@@ -93,8 +97,11 @@ password change (rate-limited). **Public verification page `/vp/[id]?t=`** (targ
 VALID / REVOKED / EXPIRED / INACTIVE VOLUNTEER for door staff. Tables `volunteers` +
 `volunteer_passes` under RLS (verified 0 rows w/o tenant ctx). Seed volunteer: grace@example.com.
 
-**Donor portal** (`/portal/*`): overview, history, recurring (pause/cancel), payment methods, receipts,
-profile (+CASL toggles).
+**Donor portal** (`/portal/*`): overview, history, recurring (pause/cancel + **dunning: past-due/
+suspended plans show a red attention banner + "Payment failed" badge + one-click "Retry payment"**),
+payment methods, receipts, profile (+CASL toggles). Dunning recovery reuses `settleDuePlan()` (extracted
+from the billing cron) via `retryPlanForDonor()` — ownership-checked, rate-limited (5/min), and uses a
+unique idempotency key so a real gateway genuinely re-charges instead of replaying the last decline.
 
 **Platform super-admin / God Mode** (`/admin/*`): overview, organizations (create/suspend/impersonate)
 + per-org hub `/admin/organizations/[id]` (overview, donors, receipts, funds, recurring, subscription
@@ -184,7 +191,7 @@ Recommended: **Vercel** + **Neon Postgres (ca-central-1)** + **Resend**. Two DB 
 - **Email** needs a Resend key + verified domain to actually send (logs to console in dev).
 - Two server-action mutations (`sendCampaign`, `generateAnnualReceipts`) verified at query/UI layer +
   typecheck; not click-executed end-to-end due to login rate-limit — click-test in the UI.
-- Not done: nonce-CSP (incompatible w/ static pages), 2FA, logo file **upload** (currently URL — needs
+- Not done: nonce-CSP (incompatible w/ static pages), logo file **upload** (currently URL — needs
   object storage), recurring event series, pledge→payment auto-linking, donor tags/saved segments,
   GST/HST subscription-invoice PDFs, real SMS (Twilio/MSG91), lawyer review of receipt template + per-org
   BN/RR before issuing real official receipts.

@@ -16,6 +16,7 @@ import {
   Megaphone,
   Sparkles,
   UsersRound,
+  ShieldCheck,
   Settings,
 } from "lucide-react";
 import { AppShell, type NavItem } from "./app-shell";
@@ -37,6 +38,7 @@ const items: (NavItem & { feature?: FeatureKey })[] = [
   { href: "/dashboard/communications", label: "Communications", icon: Megaphone, feature: "communications" },
   { href: "/dashboard/assistant", label: "AI assistant", icon: Sparkles, feature: "assistant" },
   { href: "/dashboard/team", label: "Team", icon: UsersRound },
+  { href: "/dashboard/security", label: "Security", icon: ShieldCheck },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 

@@ -19,7 +19,7 @@ export function getDonorOverview(orgId: string, donorId: string) {
         where: { donorId, status: "succeeded", receivedAt: { gte: yearStart } },
       }),
       tx.recurringPlan.findMany({
-        where: { donorId, status: "active" },
+        where: { donorId, status: { in: ["active", "suspended"] } },
         include: { fund: true },
       }),
       tx.donation.findMany({
@@ -29,14 +29,20 @@ export function getDonorOverview(orgId: string, donorId: string) {
         include: { fund: true, receipt: true },
       }),
     ]);
+    // A plan needs attention when it's been suspended or has a pending retry.
+    const attention = plans.filter(
+      (p) => p.status === "suspended" || (p.status === "active" && p.retryCount > 0)
+    ).length;
     return {
       orgName: org?.name ?? "your organization",
       registered: org?.charityStatus === "registered",
       donorName: donor ? `${donor.firstName} ${donor.lastName}` : "",
       lifetime: Number(lifetime._sum.eligibleAmount ?? 0),
       thisYear: Number(thisYear._sum.eligibleAmount ?? 0),
-      activePlans: plans.length,
+      activePlans: plans.filter((p) => p.status === "active").length,
+      attentionPlans: attention,
       nextBilling: plans
+        .filter((p) => p.status === "active")
         .map((p) => p.nextBillingDate)
         .filter(Boolean)
         .sort((a, b) => (a! > b! ? 1 : -1))[0] ?? null,
@@ -86,6 +92,9 @@ export function listDonorPlans(orgId: string, donorId: string) {
       frequency: p.frequency,
       status: p.status,
       nextBillingDate: p.nextBillingDate,
+      retryCount: p.retryCount,
+      // "past due" = still active but a charge failed and a retry is pending.
+      pastDue: p.status === "active" && p.retryCount > 0,
     }));
   });
 }

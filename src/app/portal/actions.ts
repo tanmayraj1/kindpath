@@ -4,8 +4,36 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireDonor } from "@/lib/auth/guards";
 import { withTenant } from "@/lib/tenant";
+import { retryPlanForDonor } from "@/lib/billing";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 
 export type PortalState = { error?: string; ok?: boolean };
+
+// ---- retry a failing / suspended recurring plan (dunning recovery) ----
+export type RetryState = { error?: string; ok?: boolean; message?: string };
+
+export async function retryFailedPlan(planId: string): Promise<RetryState> {
+  const session = await requireDonor();
+  if (!(await rateLimit(`retry-plan:${clientIp()}`, 5, 60_000)).ok) {
+    return { error: "Too many attempts. Please wait a minute and try again." };
+  }
+
+  const outcome = await retryPlanForDonor(planId, session.sub);
+  revalidatePath("/portal/recurring");
+  revalidatePath("/portal");
+
+  switch (outcome) {
+    case "charged":
+      return { ok: true, message: "Payment successful — your recurring gift is active again." };
+    case "failed":
+    case "suspended":
+      return { error: "That payment was declined again. Please update your card and try once more." };
+    case "not_retryable":
+      return { error: "This plan doesn't need a retry right now." };
+    default:
+      return { error: "We couldn't find that plan." };
+  }
+}
 
 // ---- recurring plan controls (pause / resume / cancel) ----
 export async function updatePlanStatus(planId: string, action: "pause" | "resume" | "cancel") {

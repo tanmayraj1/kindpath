@@ -7,6 +7,12 @@ import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { createSession, destroySession } from "@/lib/auth/session";
 import type { SessionClaims } from "@/lib/auth/jwt";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { verifyTotp } from "@/lib/auth/totp";
+import {
+  createTwoFactorTicket,
+  readTwoFactorTicket,
+  clearTwoFactorTicket,
+} from "@/lib/auth/twofa-ticket";
 
 export type AuthState = { error?: string };
 
@@ -60,6 +66,12 @@ export async function loginAction(
       orgUser.status === "active" &&
       (await verifyPassword(password, orgUser.passwordHash))
     ) {
+      // If this org user has 2FA enabled, don't hand out a session yet — issue a
+      // short-lived ticket and send them to the second-factor challenge.
+      if (orgUser.totpEnabledAt) {
+        await createTwoFactorTicket(orgUser.id);
+        redirect("/login/2fa");
+      }
       claims = {
         sub: orgUser.id,
         kind: "org",
@@ -112,6 +124,57 @@ export async function loginAction(
 
   await createSession(claims);
   redirect(portalFor[claims.kind]);
+}
+
+// ---------------- 2FA CHALLENGE (org users with TOTP) ----------------
+export async function verifyTwoFactorAction(
+  _prev: AuthState,
+  formData: FormData
+): Promise<AuthState> {
+  const userId = await readTwoFactorTicket();
+  if (!userId) redirect("/login");
+
+  if (!(await rateLimit(`2fa:${clientIp()}`, 10, 60_000)).ok) {
+    return { error: "Too many attempts. Please wait a minute and try again." };
+  }
+
+  const code = String(formData.get("code") ?? "").trim();
+  if (!code) return { error: "Enter your authentication code." };
+
+  const user = await adminDb.orgUser.findUnique({ where: { id: userId } });
+  if (!user || !user.totpEnabledAt || !user.totpSecret) {
+    clearTwoFactorTicket();
+    redirect("/login");
+  }
+
+  let ok = verifyTotp(user.totpSecret, code);
+
+  // Fall back to a one-time recovery code (consumed on use).
+  if (!ok && user.totpRecoveryCodes.length > 0) {
+    for (const hash of user.totpRecoveryCodes) {
+      if (await verifyPassword(code.toLowerCase().replace(/\s/g, ""), hash)) {
+        ok = true;
+        await adminDb.orgUser.update({
+          where: { id: user.id },
+          data: { totpRecoveryCodes: user.totpRecoveryCodes.filter((h) => h !== hash) },
+        });
+        break;
+      }
+    }
+  }
+
+  if (!ok) return { error: "That code isn't valid. Try again." };
+
+  clearTwoFactorTicket();
+  await createSession({
+    sub: user.id,
+    kind: "org",
+    role: user.role,
+    orgId: user.orgId,
+    name: user.name,
+    email: user.email,
+  });
+  redirect("/dashboard");
 }
 
 // ---------------- SIGNUP (org) ----------------
