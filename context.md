@@ -115,7 +115,12 @@ issues receipts + branded emails), **refund→void webhook** `/api/webhooks/pos`
 **White-label (complete end-to-end)**: donation/campaign pages retint from org `primaryColor` + show
 `logoUrl` (`src/components/give/branded.tsx`, hex→HSL in utils); **receipt PDF** uses org color + logo +
 custom message/footer + serial prefix (`src/lib/pdf/receipt-document.tsx`); **all emails** branded via
-`emailLayout({brand})`.
+`emailLayout({brand})`. **Logo file upload** (Settings → Branding): `LogoUploader` → `uploadLogo`
+server action → storage seam `src/lib/storage/` (`getStorage()`; default `DataUriStorage` encodes to a
+`data:` URI — no bucket, works under CSP `img-src data:` + in the receipt PDF; swap `STORAGE_PROVIDER=s3`
+later). `validateImage` (magic-byte sniff, PNG/JPG/WebP only — SVG rejected, 256 KB cap). `logoUrl` is
+now owned solely by the logo actions (removed from `updateOrgSettings` so a settings save can't wipe it).
+Onboarding step 2 still takes a logo URL. Caveat: data-URI logos may be stripped by some email clients.
 
 **Feature entitlements** (`src/lib/features.ts`): plan baseline ⊕ per-org overrides. Keys: qr, recurring,
 funds, campaigns, memberships, events, receipts, annual_receipts, reports, communications, sms, assistant,
@@ -191,8 +196,9 @@ Recommended: **Vercel** + **Neon Postgres (ca-central-1)** + **Resend**. Two DB 
 - **Email** needs a Resend key + verified domain to actually send (logs to console in dev).
 - Two server-action mutations (`sendCampaign`, `generateAnnualReceipts`) verified at query/UI layer +
   typecheck; not click-executed end-to-end due to login rate-limit — click-test in the UI.
-- Not done: nonce-CSP (incompatible w/ static pages), logo file **upload** (currently URL — needs
-  object storage), recurring event series, pledge→payment auto-linking, donor tags/saved segments,
+- Not done: nonce-CSP (incompatible w/ static pages), object storage for logos (upload works via a
+  data-URI fallback; wire S3/R2 for large assets + email-safe hosted URLs), recurring event series,
+  pledge→payment auto-linking, donor tags/saved segments,
   GST/HST subscription-invoice PDFs, real SMS (Twilio/MSG91), lawyer review of receipt template + per-org
   BN/RR before issuing real official receipts.
 

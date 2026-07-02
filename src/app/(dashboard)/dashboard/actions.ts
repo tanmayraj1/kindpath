@@ -107,13 +107,6 @@ const settingsSchema = z.object({
   craRegistrationNumber: z.string().max(30).optional(),
   authorizedSignatory: z.string().max(120).optional(),
   receiptLocality: z.string().max(120).optional(),
-  logoUrl: z
-    .string()
-    .url("Logo must be a valid https URL")
-    .startsWith("https://", "Logo URL must use https")
-    .max(500)
-    .optional()
-    .or(z.literal("")),
   primaryColor: z
     .string()
     .regex(/^#?[0-9a-fA-F]{6}$/, "Use a 6-digit hex color like #4f46e5")
@@ -140,7 +133,6 @@ export async function updateOrgSettings(
     craRegistrationNumber: formData.get("craRegistrationNumber") || undefined,
     authorizedSignatory: formData.get("authorizedSignatory") || undefined,
     receiptLocality: formData.get("receiptLocality") || undefined,
-    logoUrl: formData.get("logoUrl") || undefined,
     primaryColor: formData.get("primaryColor") || undefined,
     receiptMessage: formData.get("receiptMessage") || undefined,
     receiptFooter: formData.get("receiptFooter") || undefined,
@@ -167,7 +159,6 @@ export async function updateOrgSettings(
         craRegistrationNumber: parsed.data.craRegistrationNumber,
         authorizedSignatory: parsed.data.authorizedSignatory,
         receiptLocality: parsed.data.receiptLocality,
-        logoUrl: parsed.data.logoUrl || null,
         primaryColor: color,
         receiptMessage: parsed.data.receiptMessage || null,
         receiptFooter: parsed.data.receiptFooter || null,

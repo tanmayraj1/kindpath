@@ -16,7 +16,6 @@ type Props = {
   craRegistrationNumber?: string | null;
   authorizedSignatory?: string | null;
   receiptLocality?: string | null;
-  logoUrl?: string | null;
   primaryColor?: string | null;
   receiptMessage?: string | null;
   receiptFooter?: string | null;
@@ -98,35 +97,24 @@ export function SettingsForm(props: Props) {
       </div>
 
       <div className="rounded-xl border border-border p-4">
-        <p className="text-sm font-medium">Branding (your public donation page)</p>
+        <p className="text-sm font-medium">Brand color</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Your logo and brand color appear on your donation page and campaigns.
+          Retints your donation page, campaigns and receipts.
         </p>
-        <div className="mt-3 grid gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="logoUrl">Logo URL (https)</Label>
+        <div className="mt-3 flex max-w-xs flex-col gap-2">
+          <Label htmlFor="primaryColor">Brand color (hex)</Label>
+          <div className="flex items-center gap-2">
             <Input
-              id="logoUrl"
-              name="logoUrl"
-              placeholder="https://…/logo.png"
-              defaultValue={props.logoUrl ?? ""}
+              id="primaryColor"
+              name="primaryColor"
+              placeholder="#4f46e5"
+              defaultValue={props.primaryColor ?? ""}
             />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="primaryColor">Brand color (hex)</Label>
-            <div className="flex items-center gap-2">
-              <Input
-                id="primaryColor"
-                name="primaryColor"
-                placeholder="#4f46e5"
-                defaultValue={props.primaryColor ?? ""}
-              />
-              <span
-                aria-hidden
-                className="size-9 shrink-0 rounded-lg border border-border"
-                style={{ background: props.primaryColor ?? "#4f46e5" }}
-              />
-            </div>
+            <span
+              aria-hidden
+              className="size-9 shrink-0 rounded-lg border border-border"
+              style={{ background: props.primaryColor ?? "#4f46e5" }}
+            />
           </div>
         </div>
       </div>
