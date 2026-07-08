@@ -109,6 +109,8 @@ export type ConfirmResult = {
   /** Confirmed transaction id — reusable as the token for `charge()` (sale-with-token). */
   providerChargeRef: string;
   paymentOrderId?: string;
+  /** Amount the gateway actually charged, major units — cross-check against intended amount. */
+  amount?: number;
   cardBrand?: string;
   last4?: string;
   failureCode?: string;

@@ -72,6 +72,20 @@ export default async function HostedResponsePage({
       confirmed.failureMessage ?? "Your card was not charged successfully. Please try again."
     );
   }
+  // Defense in depth: the gateway must have charged the amount we intended.
+  if (confirmed.amount != null && Math.abs(confirmed.amount - state.amount) > 0.01) {
+    const { captureError } = await import("@/lib/observability");
+    captureError(new Error("hosted amount mismatch"), {
+      source: "give.response",
+      expected: state.amount,
+      charged: confirmed.amount,
+      transactionId,
+    });
+    return failure(
+      "Payment amount mismatch",
+      "The charged amount didn't match your donation. No receipt was issued — please contact the organization."
+    );
+  }
 
   // Payment verified → issue the signed charge token the details step trusts.
   const chargeRef = signChargeToken({

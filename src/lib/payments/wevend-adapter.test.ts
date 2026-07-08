@@ -122,6 +122,7 @@ describe("confirmTransaction", () => {
             cardNum: "XXXXXXXXXXXX1111",
             paymentOrderId: "po_1",
             txnType: "Authorization",
+            amount: "51.75",
           },
         }),
     });
@@ -130,6 +131,7 @@ describe("confirmTransaction", () => {
       success: true,
       providerChargeRef: "txn_1",
       paymentOrderId: "po_1",
+      amount: 51.75,
       cardBrand: "Visa",
       last4: "1111",
     });

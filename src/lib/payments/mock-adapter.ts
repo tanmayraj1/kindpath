@@ -53,12 +53,14 @@ export class MockAdapter implements PaymentProvider {
           ? {
               success: false,
               providerChargeRef: transactionId,
+              amount: cents / 100,
               failureCode: "card_declined",
               failureMessage: "The card was declined (simulated).",
             }
           : {
               success: true,
               providerChargeRef: transactionId,
+              amount: cents / 100,
               cardBrand: "Visa",
               last4: "4242",
             };

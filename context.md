@@ -251,6 +251,25 @@ Recommended: **Vercel** + **Neon Postgres (ca-central-1)** + **Resend**. Two DB 
   GST/HST subscription-invoice PDFs, real SMS (Twilio/MSG91), lawyer review of receipt template + per-org
   BN/RR before issuing real official receipts.
 
+## Tier 0 security backtest (2026-07-08, PASSED)
+Adversarial pass over everything built in Tier 0. Results:
+- **RLS**: `volunteers`/`volunteer_passes` confirmed in grants + tenant_tables + FORCE + tenant_isolation
+  policy. Live: runtime role `kindpath_app` sees **0 rows without org context**, correct scoping with it.
+  Volunteer queries/actions all go through `withTenant`; `/vp/[id]` uses adminDb but is token-gated +
+  session-entitled (justified). completeDonation validates fund/campaign belong to the org.
+- **Auth**: middleware only trusts `kindpath_session` (never the `kindpath_2fa` ticket → half-auth can't
+  reach guarded routes); JWT + 2FA-ticket verify pin **HS256** (no alg-confusion/none); cross-portal
+  redirects by kind; recovery codes bcrypt-hashed + consumed once; TOTP + 2FA rate-limited.
+- **Money paths**: charge-token + hosted-state both HMAC/timingSafeEqual/expiry/**domain-separated**;
+  completeDonation **de-dupes by providerChargeRef** (replay-safe) + trusts signed amount not client.
+  **HARDENING ADDED**: hosted `confirmTransaction` now returns the gateway's charged `amount`; the
+  `/response` page rejects with "Payment amount mismatch" (no receipt) if charged ≠ intended — verified
+  E2E (cookie $100 vs $51.75 charge → blocked).
+- **Rate limits**: login/signup/charge/retry/2fa/monitoring/logo/vol-pw all limited. **Secrets**: merchant
+  creds AES-GCM sealed (0 plaintext rows in DB), absent from audit log / describe / server logs.
+- **Headers**: CSP + X-Frame-Options DENY + X-Content-Type-Options + Referrer-Policy + Permissions-Policy
+  + HSTS all present. Mock-gateway page 404s unless `mock-hosted`. 85 tests, tsc clean.
+
 ## Compliance to remember
 CRA official-receipt mandatory fields (all implemented in the PDF), split-receipting, receipt
 void-on-refund + immutability (never hard-delete), **CASL** consent for marketing (only donors with

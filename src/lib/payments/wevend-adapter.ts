@@ -175,14 +175,17 @@ export class WeVendAdapter implements PaymentProvider {
       cardNum?: string;
       paymentOrderId?: string;
       txnType?: string;
+      amount?: string; // WeVend returns the charged amount in DOLLARS here (e.g. "0.12")
     }>("GET", `/api/payments/get-transaction/${encodeURIComponent(transactionId)}`);
 
     const d = body.data ?? {};
     const ok = body.success === true && WeVendAdapter.approved(d.respCode);
+    const amount = d.amount != null && d.amount !== "" ? Number(d.amount) : undefined;
     return {
       success: ok,
       providerChargeRef: transactionId,
       paymentOrderId: d.paymentOrderId,
+      amount: Number.isFinite(amount) ? amount : undefined,
       cardBrand: d.cardType,
       last4: d.cardNum ? d.cardNum.replace(/[^0-9]/g, "").slice(-4) : undefined,
       failureCode: ok ? undefined : String(d.respCode ?? "declined"),
