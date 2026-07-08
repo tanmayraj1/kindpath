@@ -1,5 +1,5 @@
 import { adminDb } from "@/lib/db";
-import { getPaymentProvider } from "@/lib/payments";
+import { getPaymentProviderForOrg } from "@/lib/payments";
 import { nextReceiptSerial, formatAddress } from "@/lib/receipts";
 import { sendReceiptEmail, sendBillingFailureEmail } from "@/lib/notifications";
 
@@ -43,7 +43,7 @@ export async function settleDuePlan(
   now = new Date(),
   opts: { idempotencyKey?: string } = {}
 ): Promise<SettleOutcome> {
-  const provider = getPaymentProvider();
+  const provider = await getPaymentProviderForOrg(plan.orgId);
   const amount = Number(plan.amount);
   const token = plan.paymentMethod?.providerToken ?? plan.providerRecurringRef ?? "tok_recurring";
 

@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
 import { XCircle } from "lucide-react";
 import { adminDb } from "@/lib/db";
-import { getPaymentProvider, supportsHostedSale } from "@/lib/payments";
+import { getPaymentProviderForOrg, supportsHostedSale } from "@/lib/payments";
 import { verifyHostedState, HOSTED_STATE_COOKIE } from "@/lib/hosted-state";
 import { signChargeToken } from "@/lib/charge-token";
 import { Branded } from "@/components/give/branded";
@@ -29,7 +29,7 @@ export default async function HostedResponsePage({
   const org = await adminDb.organization.findUnique({ where: { slug: params.slug } });
   if (!org) notFound();
 
-  const provider = getPaymentProvider();
+  const provider = await getPaymentProviderForOrg(org.id);
   if (!supportsHostedSale(provider)) notFound();
 
   const state = verifyHostedState(cookies().get(HOSTED_STATE_COOKIE)?.value);

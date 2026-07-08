@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 import { z } from "zod";
 import { adminDb } from "@/lib/db";
 import { withTenant } from "@/lib/tenant";
-import { getPaymentProvider, supportsHostedSale } from "@/lib/payments";
+import { getPaymentProviderForOrg, supportsHostedSale } from "@/lib/payments";
 import { nextReceiptSerial, formatAddress } from "@/lib/receipts";
 import { sendReceiptEmail } from "@/lib/notifications";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
@@ -32,7 +32,7 @@ export async function authorizeCharge(
   const org = await adminDb.organization.findUnique({ where: { slug } });
   if (!org) return { ok: false, message: "Organization not found." };
 
-  const provider = getPaymentProvider();
+  const provider = await getPaymentProviderForOrg(org.id);
   const result = await provider.charge({
     orgId: org.id,
     providerToken: "tok_public_oneoff",
@@ -82,7 +82,7 @@ export async function beginHostedDonation(input: {
   const org = await adminDb.organization.findUnique({ where: { slug } });
   if (!org) return { ok: false, message: "Organization not found." };
 
-  const provider = getPaymentProvider();
+  const provider = await getPaymentProviderForOrg(org.id);
   if (!supportsHostedSale(provider)) {
     return { ok: false, message: "Hosted payments are not enabled." };
   }

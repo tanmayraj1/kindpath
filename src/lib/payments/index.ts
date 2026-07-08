@@ -31,6 +31,41 @@ export function getPaymentProvider(): PaymentProvider {
   return provider;
 }
 
+// Per-org adapters (WeVend: one merchant account per org). Keyed by orgId so a
+// warm serverless instance reuses the authenticated adapter + its JWT.
+const orgProviders = new Map<string, PaymentProvider>();
+
+/**
+ * Resolve the provider for a specific org. For WeVend, prefers the org's own
+ * encrypted merchant credentials (Organization.posCredentialsRef) and falls
+ * back to the env-level merchant when none are stored. Other providers are
+ * org-agnostic and return the singleton.
+ */
+export async function getPaymentProviderForOrg(orgId: string): Promise<PaymentProvider> {
+  if (process.env.PAYMENT_PROVIDER !== "wevend") return getPaymentProvider();
+
+  const cached = orgProviders.get(orgId);
+  if (cached) return cached;
+
+  const { loadOrgGatewayCredentials } = await import("./org-credentials");
+  const creds = await loadOrgGatewayCredentials(orgId);
+  const provider = creds
+    ? new WeVendAdapter({
+        mid: creds.mid,
+        email: creds.email,
+        password: creds.password,
+        termId: creds.termId,
+      })
+    : getPaymentProvider(); // env-level merchant fallback
+  orgProviders.set(orgId, provider);
+  return provider;
+}
+
+/** Drop a cached per-org adapter (call after credentials change). */
+export function invalidateOrgProvider(orgId: string): void {
+  orgProviders.delete(orgId);
+}
+
 export { supportsHostedSale } from "./provider";
 export type { PaymentProvider } from "./provider";
 export * from "./types";

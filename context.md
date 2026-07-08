@@ -75,9 +75,19 @@ receipt. The donation's `providerChargeRef` = gateway transactionId = the reusab
 hosted mode + `/mock-gateway/[paymentOrderId]` fake card page (badged SIMULATED, only served in
 mock-hosted). Verified: all 4 response branches (approved / declined / order-mismatch / missing
 cookie) + full order→gateway→confirm→details→receipt pipeline (DB-checked). 72 tests total.
+**Per-org merchant credentials (BUILT + verified)**: God Mode → org → Settings → "Payment gateway
+(WeVend merchant)" card saves mid/email/password/termId **encrypted at rest** — AES-256-GCM sealed blob
+in `Organization.posCredentialsRef` (`src/lib/crypto-box.ts`, HKDF key from `CREDENTIALS_KEY` ??
+`AUTH_SECRET` — set a dedicated `CREDENTIALS_KEY` in prod; `src/lib/payments/org-credentials.ts`
+save/load/describe). `getPaymentProviderForOrg(orgId)` (payments/index.ts) builds a per-org
+WeVendAdapter from decrypted creds (cached per orgId, `invalidateOrgProvider` on change), env-merchant
+fallback; non-wevend providers return the singleton. Call sites now org-aware: give actions, hosted
+response page, billing `settleDuePlan`. Verified: save via real God-Mode action → DB holds `v1.` sealed
+blob (plaintext-leak check false), decrypt round-trips, resolver uses org MID over env fallback; 5
+crypto-box unit tests (round-trip, random IV, GCM tamper, wrong key, malformed). 77 tests total.
 **Still needed to go live**: sandbox baseUrl + test merchant creds + test cards (verify adapter against
-real gateway); per-org merchant credential storage (`posCredentialsRef`, encrypted); recurring-signup
-initial hosted sale to capture the token; decide webhook-less refund reconciliation.
+real gateway); recurring-signup initial hosted sale to capture the token; decide webhook-less refund
+reconciliation.
 
 ## Payment abstraction (client will plug in their POS "We Vend" later)
 `src/lib/payments/`: `PaymentProvider` interface + `MockAdapter` (charges ending `.01` decline) +

@@ -279,3 +279,47 @@ export async function impersonateOrg(orgId: string) {
   });
   redirect("/dashboard");
 }
+
+// ---- per-org gateway (WeVend) merchant credentials, encrypted at rest ----
+const posCredsSchema = z.object({
+  orgId: z.string().min(1),
+  mid: z.string().min(3, "Merchant ID is required").max(40),
+  email: z.string().email("Enter the merchant email").max(254),
+  password: z.string().min(8, "Merchant password must be at least 8 characters").max(200),
+  termId: z.string().min(1, "Terminal ID is required").max(20),
+});
+
+export async function savePosCredentials(
+  _prev: AdminState,
+  formData: FormData
+): Promise<AdminState> {
+  const admin = await requirePlatformAdmin();
+  const parsed = posCredsSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message };
+  const d = parsed.data;
+
+  const { saveOrgGatewayCredentials } = await import("@/lib/payments/org-credentials");
+  const { invalidateOrgProvider } = await import("@/lib/payments");
+  await saveOrgGatewayCredentials(d.orgId, {
+    provider: "wevend",
+    mid: d.mid,
+    email: d.email,
+    password: d.password,
+    termId: d.termId,
+  });
+  invalidateOrgProvider(d.orgId);
+  // Never log/audit the credentials themselves — only that they changed.
+  await audit(admin.sub, d.orgId, "org.pos_credentials.set", "organization", d.orgId);
+  revalidatePath(`/admin/organizations/${d.orgId}/settings`);
+  return { ok: true };
+}
+
+export async function clearPosCredentials(orgId: string): Promise<void> {
+  const admin = await requirePlatformAdmin();
+  const { clearOrgGatewayCredentials } = await import("@/lib/payments/org-credentials");
+  const { invalidateOrgProvider } = await import("@/lib/payments");
+  await clearOrgGatewayCredentials(orgId);
+  invalidateOrgProvider(orgId);
+  await audit(admin.sub, orgId, "org.pos_credentials.cleared", "organization", orgId);
+  revalidatePath(`/admin/organizations/${orgId}/settings`);
+}
