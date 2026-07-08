@@ -161,6 +161,15 @@ beginHostedDonation catch, health check. 8 unit tests (DSN parse, event shape, n
 DSN→store POST, never-throws, log routing). 85 tests total. Verified live: health JSON, monitoring 204
 + structured log lines, 429 after 10/min.
 
+**Kiosk mode** (`/kiosk/[slug]`, `qr`-feature-gated, noindex): full-screen self-serve giving for
+tablets — big amount preset buttons ($20–$1000), fund picker, in-page flow (amount → pay → minimal
+receipt details → "Thank you" → **auto-reset 12s**, no PII left on the shared screen; receipt emailed).
+`completeDonation` refactored to share `recordDonation()` core with a new redirect-free
+`completeKioskDonation` action. Synchronous providers (mock/stripe) do the full in-page flow; hosted
+(WeVend) hands off to the gateway page then `/response` (hosted-kiosk auto-reset is a follow-up).
+"Launch kiosk" link on the giving dashboard. Verified E2E: $50 → official receipt issued, no PII shown,
+`qr`-revoked → 404. (Text-to-give deferred — needs Twilio, not configured.)
+
 **White-label (complete end-to-end)**: donation/campaign pages retint from org `primaryColor` + show
 `logoUrl` (`src/components/give/branded.tsx`, hex→HSL in utils); **receipt PDF** uses org color + logo +
 custom message/footer + serial prefix (`src/lib/pdf/receipt-document.tsx`); **all emails** branded via

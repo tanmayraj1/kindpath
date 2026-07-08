@@ -1,5 +1,5 @@
 import QRCode from "qrcode";
-import { ExternalLink, Download, CreditCard, Smartphone } from "lucide-react";
+import { ExternalLink, Download, CreditCard, Smartphone, Tablet } from "lucide-react";
 import { Topbar } from "@/components/dashboard/topbar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CopyButton } from "@/components/dashboard/copy-button";
@@ -104,6 +104,29 @@ export default async function GivingPage() {
               className={cn(buttonVariants({ size: "sm" }), "w-full")}
             >
               <Download className="size-4" /> Download QR (PNG)
+            </a>
+          </CardContent>
+        </Card>
+
+        {/* Kiosk card */}
+        <Card className="h-fit lg:col-start-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Tablet className="size-5 text-brand-600" /> Kiosk mode
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Full-screen self-serve giving for a tablet at your entrance or events. Large amount
+              buttons, receipts emailed, auto-resets for the next person.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <a
+              href={`${appUrl}/kiosk/${slug}`}
+              target="_blank"
+              rel="noreferrer"
+              className={cn(buttonVariants({ size: "sm" }), "w-full")}
+            >
+              <ExternalLink className="size-4" /> Launch kiosk
             </a>
           </CardContent>
         </Card>

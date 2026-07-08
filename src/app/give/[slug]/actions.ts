@@ -139,16 +139,14 @@ const completeSchema = z.object({
   postalCode: z.string().min(3, "Postal code is required").max(12),
 });
 
-export async function completeDonation(
-  _prev: CompleteState,
-  formData: FormData
-): Promise<CompleteState> {
-  const parsed = completeSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Please check your details." };
-  }
-  const d = parsed.data;
+type CompleteInput = z.infer<typeof completeSchema>;
 
+/**
+ * Record a completed donation + issue the receipt. Shared by the redirecting
+ * donor flow (completeDonation) and the in-page kiosk flow (completeKioskDonation).
+ * Returns the receipt id, or an error message — never redirects.
+ */
+async function recordDonation(d: CompleteInput): Promise<{ receiptId: string } | { error: string }> {
   const org = await adminDb.organization.findUnique({ where: { slug: d.slug } });
   if (!org) return { error: "Organization not found." };
 
@@ -302,6 +300,37 @@ export async function completeDonation(
     return receipt.id;
   });
 
+  return { receiptId };
+}
+
+export async function completeDonation(
+  _prev: CompleteState,
+  formData: FormData
+): Promise<CompleteState> {
+  const parsed = completeSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Please check your details." };
+  }
+  const result = await recordDonation(parsed.data);
+  if ("error" in result) return { error: result.error };
+
   // signed link so the public receipt page only shows PII to the actual donor
-  redirect(`/r/${receiptId}?t=${signReceiptToken(receiptId)}`);
+  redirect(`/r/${result.receiptId}?t=${signReceiptToken(result.receiptId)}`);
+}
+
+// ---------- kiosk: complete WITHOUT redirecting (shared tablet, no PII on screen) ----------
+export type KioskCompleteState = { ok?: boolean; error?: string };
+
+export async function completeKioskDonation(
+  _prev: KioskCompleteState,
+  formData: FormData
+): Promise<KioskCompleteState> {
+  const parsed = completeSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Please check your details." };
+  }
+  const result = await recordDonation(parsed.data);
+  if ("error" in result) return { error: result.error };
+  // No redirect, no receipt link on screen — the donor gets their receipt by email.
+  return { ok: true };
 }
