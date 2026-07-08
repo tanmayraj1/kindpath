@@ -20,6 +20,10 @@ export function getPaymentProvider(): PaymentProvider {
     case "wevend":
       provider = new WeVendAdapter();
       break;
+    case "mock-hosted":
+      // Simulates a WeVend-style redirect gateway locally (see MockAdapter).
+      provider = new MockAdapter({ hosted: true });
+      break;
     case "mock":
     default:
       provider = new MockAdapter();

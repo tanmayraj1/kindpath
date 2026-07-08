@@ -1,15 +1,17 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { z } from "zod";
 import { adminDb } from "@/lib/db";
 import { withTenant } from "@/lib/tenant";
-import { getPaymentProvider } from "@/lib/payments";
+import { getPaymentProvider, supportsHostedSale } from "@/lib/payments";
 import { nextReceiptSerial, formatAddress } from "@/lib/receipts";
 import { sendReceiptEmail } from "@/lib/notifications";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { signChargeToken, verifyChargeToken } from "@/lib/charge-token";
 import { signReceiptToken } from "@/lib/receipt-links";
+import { signHostedState, HOSTED_STATE_COOKIE } from "@/lib/hosted-state";
 
 // ---------- step 1: authorize a charge (payment happens first) ----------
 export type ChargeState =
@@ -49,6 +51,71 @@ export async function authorizeCharge(
     currency,
   });
   return { ok: true, chargeRef: token };
+}
+
+// ---------- step 1b: hosted gateways (WeVend) — create order + redirect ----------
+export type HostedStart =
+  | { ok: true; redirectTo: string }
+  | { ok: false; message: string };
+
+/**
+ * For redirect gateways: create the sale order, stash signed state in a cookie
+ * (survives the off-site hop; can't be tampered), and hand back the gateway URL.
+ * The donor pays on the gateway's page and returns to /give/[slug]/response.
+ */
+export async function beginHostedDonation(input: {
+  slug: string;
+  amount: number;
+  fundId?: string;
+  campaignId?: string;
+  frequency: "one_time" | "monthly";
+  currency?: string;
+}): Promise<HostedStart> {
+  const { slug, amount, frequency } = input;
+  const currency = input.currency ?? "CAD";
+  if (!Number.isFinite(amount) || amount < 1 || amount > 1_000_000) {
+    return { ok: false, message: "Enter a valid amount." };
+  }
+  if (!(await rateLimit(`charge:${clientIp()}`, 10, 60_000)).ok) {
+    return { ok: false, message: "Too many attempts. Please wait a minute and try again." };
+  }
+  const org = await adminDb.organization.findUnique({ where: { slug } });
+  if (!org) return { ok: false, message: "Organization not found." };
+
+  const provider = getPaymentProvider();
+  if (!supportsHostedSale(provider)) {
+    return { ok: false, message: "Hosted payments are not enabled." };
+  }
+
+  const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  let init;
+  try {
+    init = await provider.beginHostedSale({
+      orgId: org.id,
+      money: { amount, currency },
+      // WeVend requires the redirect URL to end in /response.
+      redirectUrl: `${base}/give/${slug}/response`,
+    });
+  } catch (e) {
+    console.error("hosted sale init failed:", e);
+    return { ok: false, message: "The payment service is unavailable. Please try again shortly." };
+  }
+
+  cookies().set(
+    HOSTED_STATE_COOKIE,
+    signHostedState({
+      orgId: org.id,
+      slug,
+      amount,
+      currency,
+      fundId: input.fundId,
+      campaignId: input.campaignId,
+      frequency,
+      paymentOrderId: init.paymentOrderId,
+    }),
+    { httpOnly: true, sameSite: "lax", path: "/", maxAge: 30 * 60, secure: process.env.NODE_ENV === "production" }
+  );
+  return { ok: true, redirectTo: init.redirectTo };
 }
 
 // ---------- step 2: capture details + issue receipt ----------

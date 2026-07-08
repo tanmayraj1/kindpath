@@ -5,6 +5,7 @@ import { useFormState } from "react-dom";
 import { Heart, CreditCard, Lock, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import {
   authorizeCharge,
+  beginHostedDonation,
   completeDonation,
   type CompleteState,
 } from "@/app/give/[slug]/actions";
@@ -29,9 +30,12 @@ const initialComplete: CompleteState = {};
 export function DonationFlow({
   org,
   campaign,
+  hosted = false,
 }: {
   org: Org;
   campaign?: { id: string; title: string; fundId?: string | null };
+  /** true when the provider uses a hosted card page (WeVend) — skips the in-app pay step */
+  hosted?: boolean;
 }) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [amount, setAmount] = useState(50);
@@ -58,6 +62,25 @@ export function DonationFlow({
       setChargeRef(res.chargeRef);
       setStep(3);
     } else {
+      setPayError(res.message);
+    }
+  }
+
+  /** Hosted gateways: create the order server-side, then hand off to the gateway's card page. */
+  async function payHosted() {
+    setPayError(null);
+    setCharging(true);
+    const res = await beginHostedDonation({
+      slug: org.slug,
+      amount: effectiveAmount,
+      fundId: fundId !== "none" ? fundId : undefined,
+      campaignId: campaign?.id,
+      frequency,
+    });
+    if (res.ok) {
+      window.location.assign(res.redirectTo);
+    } else {
+      setCharging(false);
       setPayError(res.message);
     }
   }
@@ -170,13 +193,20 @@ export function DonationFlow({
               </label>
             )}
 
+            {payError && hosted && (
+              <div className="flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
+                <AlertCircle className="size-4 shrink-0" />
+                {payError}
+              </div>
+            )}
             <Button
               size="lg"
               className="w-full"
-              disabled={effectiveAmount < 1}
-              onClick={() => setStep(2)}
+              disabled={effectiveAmount < 1 || charging}
+              onClick={() => (hosted ? payHosted() : setStep(2))}
             >
-              Continue · {formatCAD(effectiveAmount)}
+              {charging && <Loader2 className="size-4 animate-spin" />}
+              {hosted ? "Continue to secure payment" : "Continue"} · {formatCAD(effectiveAmount)}
               {frequency === "monthly" ? "/mo" : ""}
             </Button>
           </div>

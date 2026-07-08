@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { DonationFlow } from "@/components/give/donation-flow";
 import { Branded } from "@/components/give/branded";
 import { getPublicOrg } from "@/lib/queries/public";
+import { getPaymentProvider, supportsHostedSale } from "@/lib/payments";
 
 export async function generateMetadata({
   params,
@@ -38,7 +39,7 @@ export default async function GivePage({ params }: { params: { slug: string } })
       </header>
 
       <main className="container flex items-start justify-center py-10 sm:py-16">
-        <DonationFlow org={org} />
+        <DonationFlow org={org} hosted={supportsHostedSale(getPaymentProvider())} />
       </main>
     </Branded>
   );

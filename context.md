@@ -62,9 +62,22 @@ transactionId), `refund`→`/payments/refund-with-token`, `voidTransaction`→`/
 **cents as strings**, orderId **≤15 chars**. No webhooks — reconcile via return URL + polling.
 Env `WEVEND_BASE_URL/IFRAME_URL/MID/EMAIL/PASSWORD/TERM_ID` (prod-required when provider=wevend). 11
 unit tests vs documented shapes (auth, 401 re-auth, sale, confirm approve/decline, sale-with-token,
-refund, void). **Still needed**: sandbox baseUrl + test merchant creds + test cards to verify live; the
-`/give` one-time flow must change to create-order→redirect-to-iframe→`/return` handler (not synchronous
-charge); per-org merchant credential storage (`Organization.posCredentialsRef`, encrypted).
+refund, void).
+
+**Hosted redirect flow (BUILT + E2E-verified via mock-hosted)**: `/give` in hosted mode →
+`beginHostedDonation` action (validates, `provider.beginHostedSale`, signed **state cookie**
+`kindpath_hs` (`src/lib/hosted-state.ts`, HMAC, 30-min) carries amount/org/fund across the off-site
+hop) → donor pays on gateway page → returns to **`/give/[slug]/response`** which NEVER trusts the
+redirect's success flag: verifies state cookie + paymentOrderId match, `confirmTransaction`
+server-side, then issues the signed chargeToken → `HostedDetailsForm` → existing `completeDonation` →
+receipt. The donation's `providerChargeRef` = gateway transactionId = the reusable token for recurring
+`sale-with-token`. **`PAYMENT_PROVIDER=mock-hosted`** simulates the whole thing locally: MockAdapter
+hosted mode + `/mock-gateway/[paymentOrderId]` fake card page (badged SIMULATED, only served in
+mock-hosted). Verified: all 4 response branches (approved / declined / order-mismatch / missing
+cookie) + full order→gateway→confirm→details→receipt pipeline (DB-checked). 72 tests total.
+**Still needed to go live**: sandbox baseUrl + test merchant creds + test cards (verify adapter against
+real gateway); per-org merchant credential storage (`posCredentialsRef`, encrypted); recurring-signup
+initial hosted sale to capture the token; decide webhook-less refund reconciliation.
 
 ## Payment abstraction (client will plug in their POS "We Vend" later)
 `src/lib/payments/`: `PaymentProvider` interface + `MockAdapter` (charges ending `.01` decline) +

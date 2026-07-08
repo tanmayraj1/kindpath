@@ -10,6 +10,9 @@ import type {
   RefundResult,
   RawWebhook,
   PaymentEvent,
+  HostedSaleInput,
+  HostedSaleInit,
+  ConfirmResult,
 } from "./types";
 
 /**
@@ -19,9 +22,52 @@ import type {
  *
  * Test hook: charges with an amount ending in .01 are simulated as DECLINED,
  * so failed-payment + retry flows can be exercised.
+ *
+ * Hosted mode (PAYMENT_PROVIDER=mock-hosted): simulates a WeVend-style
+ * redirect gateway. beginHostedSale "redirects" to the local /mock-gateway
+ * page (a clearly-labelled fake card form) which bounces back to the app's
+ * /response URL — so the entire hosted flow is E2E-testable with no gateway.
+ * The amount is encoded in the order id (stateless): cents ending in 01 decline.
  */
 export class MockAdapter implements PaymentProvider {
   readonly name = "mock";
+
+  constructor(private readonly opts: { hosted?: boolean } = {}) {
+    if (opts.hosted) {
+      // Presence of these methods is what supportsHostedSale() detects, so
+      // plain mock mode must NOT expose them. Assign per-instance in hosted mode.
+      this.beginHostedSale = async (input: HostedSaleInput): Promise<HostedSaleInit> => {
+        const cents = Math.round(input.money.amount * 100);
+        const paymentOrderId = `mpo_${cents}_${this.id("po").slice(-6)}`;
+        const redirect = encodeURIComponent(input.redirectUrl);
+        return {
+          paymentOrderId,
+          redirectTo: `/mock-gateway/${paymentOrderId}?redirect=${redirect}`,
+        };
+      };
+      this.confirmTransaction = async (transactionId: string): Promise<ConfirmResult> => {
+        // transactionId format mirrors beginHostedSale: mtx_<cents>_<rand>
+        const cents = Number(transactionId.split("_")[1] ?? 0);
+        const declined = cents % 100 === 1;
+        return declined
+          ? {
+              success: false,
+              providerChargeRef: transactionId,
+              failureCode: "card_declined",
+              failureMessage: "The card was declined (simulated).",
+            }
+          : {
+              success: true,
+              providerChargeRef: transactionId,
+              cardBrand: "Visa",
+              last4: "4242",
+            };
+      };
+    }
+  }
+
+  beginHostedSale?: (input: HostedSaleInput) => Promise<HostedSaleInit>;
+  confirmTransaction?: (transactionId: string) => Promise<ConfirmResult>;
 
   private id(prefix: string) {
     // Deterministic-enough unique id without Math.random/Date in hot paths.
