@@ -50,6 +50,22 @@ orgs issue **payment confirmations**. Split-receipting: `eligibleAmount = amount
   Upstash-Redis-optional + in-memory fallback) on login/signup/charge/contact/campaign; **input bounds**
   (amount cap $1M, max lengths); constant-time cron secret; env validation (`src/lib/env.ts`).
 
+## We Vend WePay integration (spec v2.2.0 — adapter scaffolded, needs sandbox creds)
+`WeVendAdapter` (`src/lib/payments/wevend-adapter.ts`) + interface extension for the **hosted-iframe
+flow** (WeVend captures cards in its own iframe, not server-side): `provider.ts` adds optional
+`beginHostedSale` / `confirmTransaction` / `voidTransaction` + `supportsHostedSale()` guard; types add
+`HostedSaleInput`/`HostedSaleInit`/`ConfirmResult`. Adapter: JWT auth (`/auth/token`, 7-day token
+cached, re-auth on 401), `beginHostedSale`→`/payments/sale`→`{paymentOrderId, iframe URL}`,
+`confirmTransaction`→`/payments/get-transaction/:id` (respCode 000=approved), `charge`→
+`/payments/sale-with-token` (SYNCHRONOUS — recurring/cron path, providerToken = an initial sale's
+transactionId), `refund`→`/payments/refund-with-token`, `voidTransaction`→`/payments/void`. Amounts in
+**cents as strings**, orderId **≤15 chars**. No webhooks — reconcile via return URL + polling.
+Env `WEVEND_BASE_URL/IFRAME_URL/MID/EMAIL/PASSWORD/TERM_ID` (prod-required when provider=wevend). 11
+unit tests vs documented shapes (auth, 401 re-auth, sale, confirm approve/decline, sale-with-token,
+refund, void). **Still needed**: sandbox baseUrl + test merchant creds + test cards to verify live; the
+`/give` one-time flow must change to create-order→redirect-to-iframe→`/return` handler (not synchronous
+charge); per-org merchant credential storage (`Organization.posCredentialsRef`, encrypted).
+
 ## Payment abstraction (client will plug in their POS "We Vend" later)
 `src/lib/payments/`: `PaymentProvider` interface + `MockAdapter` (charges ending `.01` decline) +
 **`StripeAdapter`** (`stripe-adapter.ts`, raw REST via fetch, no SDK dep: PaymentIntents w/ idempotency

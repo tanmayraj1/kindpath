@@ -81,3 +81,36 @@ export type RawWebhook = {
   headers: Record<string, string>;
   body: string;
 };
+
+// ---- Hosted (redirect / iframe) payment flow ----
+// Gateways like WeVend WePay capture card details in their OWN hosted iframe, then
+// redirect the browser back — they don't charge server-side synchronously. These
+// types model that flow, which `charge()` alone can't express.
+
+export type HostedSaleInput = {
+  orgId: string;
+  money: Money;
+  /** Provider order id. WeVend requires ≤15 chars; generated if omitted. */
+  orderId?: string;
+  /** Absolute URL the gateway returns the browser to (WeVend: must end in /response). */
+  redirectUrl: string;
+  metadata?: Record<string, string>;
+};
+
+export type HostedSaleInit = {
+  /** Provider order reference — used to poll/confirm and to build the iframe URL. */
+  paymentOrderId: string;
+  /** Absolute hosted-iframe URL to send the donor to for card entry. */
+  redirectTo: string;
+};
+
+export type ConfirmResult = {
+  success: boolean;
+  /** Confirmed transaction id — reusable as the token for `charge()` (sale-with-token). */
+  providerChargeRef: string;
+  paymentOrderId?: string;
+  cardBrand?: string;
+  last4?: string;
+  failureCode?: string;
+  failureMessage?: string;
+};

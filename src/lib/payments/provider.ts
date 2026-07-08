@@ -9,6 +9,9 @@ import type {
   RefundResult,
   RawWebhook,
   PaymentEvent,
+  HostedSaleInput,
+  HostedSaleInit,
+  ConfirmResult,
 } from "./types";
 
 /**
@@ -36,4 +39,23 @@ export interface PaymentProvider {
 
   /** Verify signature + normalize an inbound webhook into a PaymentEvent. */
   verifyWebhook(req: RawWebhook): Promise<PaymentEvent>;
+
+  // ---- optional: hosted/redirect-flow gateways (e.g. WeVend iframe) ----
+
+  /** Create a hosted sale order and return where to redirect the donor for card entry. */
+  beginHostedSale?(input: HostedSaleInput): Promise<HostedSaleInit>;
+
+  /** Server-side confirm a returned transaction (never trust the redirect's success flag). */
+  confirmTransaction?(transactionId: string): Promise<ConfirmResult>;
+
+  /** Void a sale/pre-auth transaction (not a completion). */
+  voidTransaction?(providerChargeRef: string): Promise<{ success: boolean; providerRef: string }>;
+}
+
+/** Narrow a provider to one that supports the hosted (iframe/redirect) sale flow. */
+export function supportsHostedSale(
+  p: PaymentProvider
+): p is PaymentProvider &
+  Required<Pick<PaymentProvider, "beginHostedSale" | "confirmTransaction">> {
+  return typeof p.beginHostedSale === "function" && typeof p.confirmTransaction === "function";
 }

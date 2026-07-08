@@ -1,14 +1,14 @@
 import type { PaymentProvider } from "./provider";
 import { MockAdapter } from "./mock-adapter";
 import { StripeAdapter } from "./stripe-adapter";
+import { WeVendAdapter } from "./wevend-adapter";
 
 let provider: PaymentProvider | null = null;
 
 /**
- * Returns the configured payment provider. Switch on PAYMENT_PROVIDER env to
- * plug in the client POS adapter later without touching call sites:
- *
- *   case "wevend": return new WeVendAdapter({ baseUrl, apiKey });
+ * Returns the configured payment provider (singleton). Switch on PAYMENT_PROVIDER.
+ * WeVend uses the single-merchant env credentials here; per-org merchant creds
+ * will be threaded through once credential storage is wired.
  */
 export function getPaymentProvider(): PaymentProvider {
   if (provider) return provider;
@@ -17,6 +17,9 @@ export function getPaymentProvider(): PaymentProvider {
     case "stripe":
       provider = new StripeAdapter();
       break;
+    case "wevend":
+      provider = new WeVendAdapter();
+      break;
     case "mock":
     default:
       provider = new MockAdapter();
@@ -24,5 +27,6 @@ export function getPaymentProvider(): PaymentProvider {
   return provider;
 }
 
+export { supportsHostedSale } from "./provider";
 export type { PaymentProvider } from "./provider";
 export * from "./types";

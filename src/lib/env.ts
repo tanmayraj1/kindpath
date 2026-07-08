@@ -35,6 +35,11 @@ export function assertEnv() {
         console.warn("⚠️  Stripe is in TEST mode (sk_test_) while NODE_ENV=production.");
       }
     }
+    if (process.env.PAYMENT_PROVIDER === "wevend") {
+      for (const key of ["WEVEND_BASE_URL", "WEVEND_IFRAME_URL", "WEVEND_MID", "WEVEND_EMAIL", "WEVEND_PASSWORD", "WEVEND_TERM_ID"]) {
+        if (!process.env[key]) missing.push(key);
+      }
+    }
   }
 
   if (missing.length) {
