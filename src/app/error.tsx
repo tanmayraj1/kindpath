@@ -14,8 +14,18 @@ export default function Error({
   reset: () => void;
 }) {
   useEffect(() => {
-    // In production, send to your error monitor (e.g. Sentry) here.
     console.error(error);
+    // Report to the server-side monitor (forwards to Sentry when configured).
+    void fetch("/api/monitoring", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: error.message,
+        digest: error.digest,
+        url: window.location.pathname,
+      }),
+      keepalive: true,
+    }).catch(() => {});
   }, [error]);
 
   return (

@@ -1,6 +1,7 @@
 import { adminDb } from "@/lib/db";
 import { getPaymentProvider } from "@/lib/payments";
 import { handlePaymentEvent } from "@/lib/payment-events";
+import { captureError } from "@/lib/observability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,7 +45,8 @@ export async function POST(req: Request) {
       where: { providerEventId: event.id },
       data: { status: "processed", processedAt: new Date() },
     });
-  } catch {
+  } catch (e) {
+    captureError(e, { source: "webhook.pos", eventId: event.id, eventType: event.type });
     await adminDb.webhookEvent.update({
       where: { providerEventId: event.id },
       data: { status: "failed" },

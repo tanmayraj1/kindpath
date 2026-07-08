@@ -97,7 +97,8 @@ export async function beginHostedDonation(input: {
       redirectUrl: `${base}/give/${slug}/response`,
     });
   } catch (e) {
-    console.error("hosted sale init failed:", e);
+    const { captureError } = await import("@/lib/observability");
+    captureError(e, { source: "give.beginHostedDonation", slug, amount });
     return { ok: false, message: "The payment service is unavailable. Please try again shortly." };
   }
 

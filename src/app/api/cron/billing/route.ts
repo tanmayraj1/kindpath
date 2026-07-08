@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { runBilling } from "@/lib/billing";
+import { captureError, log } from "@/lib/observability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,8 +30,15 @@ async function handle(req: Request) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const summary = await runBilling();
-  return Response.json({ ok: true, summary });
+  try {
+    const summary = await runBilling();
+    log("info", "billing run complete", { ...summary });
+    return Response.json({ ok: true, summary });
+  } catch (e) {
+    // A crashed run means missed charges — this must be visible, not a silent 500.
+    captureError(e, { source: "cron.billing" });
+    return Response.json({ ok: false, error: "billing run failed" }, { status: 500 });
+  }
 }
 
 export const GET = handle;

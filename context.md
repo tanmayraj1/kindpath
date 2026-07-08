@@ -148,8 +148,18 @@ management, **feature entitlements toggle**, users, settings), subscriptions, an
 (audit log + **Run billing now**).
 
 **Background**: recurring **billing cron** `/api/cron/billing` (CRON_SECRET; retries 3/5/7 then suspend;
-issues receipts + branded emails), **refund→void webhook** `/api/webhooks/pos` (idempotent), `/api/health`,
-`robots.ts`, `sitemap.ts`.
+issues receipts + branded emails), **refund→void webhook** `/api/webhooks/pos` (idempotent), `/api/health`
+(**enriched**: dbLatencyMs + release + env), `robots.ts`, `sitemap.ts`.
+
+**Observability** (`src/lib/observability.ts`, zero-dep, env-gated): `log(level,msg,fields)` one-line
+JSON (Vercel log drains); `captureError(err,ctx)` always structured-logs AND, when **`SENTRY_DSN`** set,
+fire-and-forgets to Sentry's store API over plain HTTP (DSN parsed, X-Sentry-Auth header — swap in the
+real SDK later, call sites unchanged; never throws). Client boundaries (`error.tsx`/`global-error.tsx`)
+POST to **`/api/monitoring`** (no auth by design, 10/min rate-limited, size-capped) → captureError with
+source=client-boundary. Wired into: cron billing catch (visible failed runs), webhook processing catch,
+beginHostedDonation catch, health check. 8 unit tests (DSN parse, event shape, no-DSN no-fetch,
+DSN→store POST, never-throws, log routing). 85 tests total. Verified live: health JSON, monitoring 204
++ structured log lines, 429 after 10/min.
 
 **White-label (complete end-to-end)**: donation/campaign pages retint from org `primaryColor` + show
 `logoUrl` (`src/components/give/branded.tsx`, hex→HSL in utils); **receipt PDF** uses org color + logo +
