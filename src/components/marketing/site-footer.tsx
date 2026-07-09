@@ -63,7 +63,18 @@ export function SiteFooter() {
         </div>
         <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-border pt-8 text-sm text-muted-foreground sm:flex-row">
           <p>© {new Date().getFullYear()} KindPath. All rights reserved.</p>
-          <p>Made in Canada 🇨🇦 · Hosted in Canadian data regions</p>
+          <p>
+            Made by{" "}
+            <a
+              href="https://rytfulmedia.in"
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium text-foreground transition-colors hover:text-brand-600"
+            >
+              Rytful Media
+            </a>{" "}
+            · Made in Canada 🇨🇦
+          </p>
         </div>
       </div>
     </footer>
