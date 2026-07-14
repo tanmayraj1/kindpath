@@ -46,6 +46,30 @@ describe("WeVendAdapter config", () => {
 });
 
 describe("auth", () => {
+  it("uses org-token auth (wvNumber) when in org mode", async () => {
+    const { impl, calls } = router({
+      "/api/auth/org-token": () => AUTH_OK,
+      "/api/payments/sale": () =>
+        jsonResponse({ success: true, data: { paymentOrderId: "po_org" } }),
+    });
+    const a = new WeVendAdapter({
+      baseUrl: "https://wepay.wevend.dev",
+      iframeUrl: "https://iframe.wevend.dev",
+      wvNumber: "WV-ISV-50001",
+      password: "password123",
+      mid: "KPTEST0001",
+      termId: "00000003",
+      fetchImpl: impl,
+    });
+    await a.beginHostedSale({ orgId: "o", money: { amount: 10, currency: "CAD" }, redirectUrl: "https://x/response" });
+    const login = calls.find((c) => c.url.endsWith("/api/auth/org-token"))!;
+    expect(login).toBeDefined();
+    expect(JSON.parse(String(login.init?.body))).toEqual({ wvNumber: "WV-ISV-50001", password: "password123" });
+    // sale still carries the merchant MID per call
+    const sale = calls.find((c) => c.url.endsWith("/api/payments/sale"))!;
+    expect(JSON.parse(String(sale.init?.body)).mid).toBe("KPTEST0001");
+  });
+
   it("logs in once and reuses the token across calls", async () => {
     const { impl, calls } = router({
       "/api/auth/token": () => AUTH_OK,

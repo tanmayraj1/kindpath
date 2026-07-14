@@ -37,12 +37,16 @@ import type {
  */
 
 export type WeVendConfig = {
-  baseUrl: string; // gateway API base, e.g. https://api.wevend.dev
+  baseUrl: string; // gateway API base, e.g. https://wepay.wevend.dev
   iframeUrl: string; // hosted card iframe base, e.g. https://iframe.wevend.dev
-  mid: string;
-  email: string;
-  password: string;
+  mid: string; // the merchant to transact as (required in both auth modes)
   termId: string;
+  // Auth: either ORG/ISV mode (wvNumber + password → /auth/org-token, one token
+  // acts across many merchant MIDs) or MERCHANT mode (mid + email + password →
+  // /auth/token). Org mode is used when wvNumber is set.
+  wvNumber?: string;
+  email?: string;
+  password: string;
 };
 
 // WeVend returnCode/respCode values that mean "approved".
@@ -62,19 +66,27 @@ export class WeVendAdapter implements PaymentProvider {
   private accessToken: string | null = null;
   private refreshToken: string | null = null;
 
+  private readonly orgMode: boolean;
+
   constructor(opts?: Partial<WeVendConfig> & { fetchImpl?: typeof fetch }) {
     this.cfg = {
       baseUrl: (opts?.baseUrl ?? process.env.WEVEND_BASE_URL ?? "").replace(/\/$/, ""),
       iframeUrl: (opts?.iframeUrl ?? process.env.WEVEND_IFRAME_URL ?? "").replace(/\/$/, ""),
       mid: opts?.mid ?? process.env.WEVEND_MID ?? "",
+      termId: opts?.termId ?? process.env.WEVEND_TERM_ID ?? "",
+      wvNumber: opts?.wvNumber ?? process.env.WEVEND_WV_NUMBER ?? "",
       email: opts?.email ?? process.env.WEVEND_EMAIL ?? "",
       password: opts?.password ?? process.env.WEVEND_PASSWORD ?? "",
-      termId: opts?.termId ?? process.env.WEVEND_TERM_ID ?? "",
     };
     this.fetchImpl = opts?.fetchImpl ?? fetch;
-    if (!this.cfg.baseUrl || !this.cfg.mid || !this.cfg.email || !this.cfg.password) {
+    this.orgMode = Boolean(this.cfg.wvNumber);
+
+    const ok = this.cfg.baseUrl && this.cfg.mid && this.cfg.password &&
+      (this.orgMode ? this.cfg.wvNumber : this.cfg.email);
+    if (!ok) {
       throw new Error(
-        "PAYMENT_PROVIDER=wevend requires WEVEND_BASE_URL, WEVEND_MID, WEVEND_EMAIL, WEVEND_PASSWORD"
+        "PAYMENT_PROVIDER=wevend requires WEVEND_BASE_URL, WEVEND_MID and either " +
+          "(WEVEND_WV_NUMBER + WEVEND_PASSWORD) for org mode or (WEVEND_EMAIL + WEVEND_PASSWORD) for merchant mode"
       );
     }
   }
@@ -94,10 +106,16 @@ export class WeVendAdapter implements PaymentProvider {
   }
 
   private async login(): Promise<void> {
-    const res = await this.fetchImpl(`${this.cfg.baseUrl}/api/auth/token`, {
+    // Org/ISV token acts across many merchant MIDs; merchant token is single-MID.
+    const path = this.orgMode ? "/api/auth/org-token" : "/api/auth/token";
+    const payload = this.orgMode
+      ? { wvNumber: this.cfg.wvNumber, password: this.cfg.password }
+      : { mid: this.cfg.mid, email: this.cfg.email, password: this.cfg.password };
+
+    const res = await this.fetchImpl(`${this.cfg.baseUrl}${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mid: this.cfg.mid, email: this.cfg.email, password: this.cfg.password }),
+      body: JSON.stringify(payload),
     });
     const body = (await res.json()) as WeVendEnvelope<{ accessToken: string; refreshToken: string }>;
     if (!res.ok || !body.success || !body.data?.accessToken) {

@@ -60,9 +60,13 @@ cached, re-auth on 401), `beginHostedSale`→`/payments/sale`→`{paymentOrderId
 `/payments/sale-with-token` (SYNCHRONOUS — recurring/cron path, providerToken = an initial sale's
 transactionId), `refund`→`/payments/refund-with-token`, `voidTransaction`→`/payments/void`. Amounts in
 **cents as strings**, orderId **≤15 chars**. No webhooks — reconcile via return URL + polling.
-Env `WEVEND_BASE_URL/IFRAME_URL/MID/EMAIL/PASSWORD/TERM_ID` (prod-required when provider=wevend). 11
-unit tests vs documented shapes (auth, 401 re-auth, sale, confirm approve/decline, sale-with-token,
-refund, void).
+Env `WEVEND_BASE_URL/IFRAME_URL/MID/TERM_ID` + auth: **org/ISV mode** (`WEVEND_WV_NUMBER`+`WEVEND_PASSWORD`
+→ `/api/auth/org-token`, one token acts across many merchant MIDs, `mid` passed per call) OR merchant
+mode (`WEVEND_EMAIL`+`WEVEND_PASSWORD` → `/api/auth/token`). 12 unit tests. **SANDBOX VERIFIED LIVE**
+(2026-07-14): base `https://wepay.wevend.dev`, dev ISV creds `WV-ISV-50001`/`password123` →
+adapter authenticates + reaches /payments/sale for real (fails only on "Merchant not found" — no test
+merchant provisioned under the ISV yet; register needs admin role → 403). BLOCKED on WeVend/Dhruv:
+a provisioned test `mid`+`termId` under WV-ISV-50001, and test card numbers for the iframe.
 
 **Hosted redirect flow (BUILT + E2E-verified via mock-hosted)**: `/give` in hosted mode →
 `beginHostedDonation` action (validates, `provider.beginHostedSale`, signed **state cookie**
