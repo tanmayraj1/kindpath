@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { runBilling } from "@/lib/billing";
+import { runSubscriptionCycle } from "@/lib/subscriptions";
 import { captureError, log } from "@/lib/observability";
 
 export const runtime = "nodejs";
@@ -30,15 +31,30 @@ async function handle(req: Request) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  // Two independent money flows. Isolated from each other on purpose: a fault in
+  // KindPath's own invoicing must never stop donors' recurring gifts from being
+  // collected, and vice versa.
+  const result: { donations?: unknown; subscriptions?: unknown; errors: string[] } = { errors: [] };
+
   try {
-    const summary = await runBilling();
-    log("info", "billing run complete", { ...summary });
-    return Response.json({ ok: true, summary });
+    result.donations = await runBilling();
   } catch (e) {
-    // A crashed run means missed charges — this must be visible, not a silent 500.
-    captureError(e, { source: "cron.billing" });
-    return Response.json({ ok: false, error: "billing run failed" }, { status: 500 });
+    captureError(e, { source: "cron.billing.donations" });
+    result.errors.push("donation billing failed");
   }
+
+  try {
+    result.subscriptions = await runSubscriptionCycle();
+  } catch (e) {
+    captureError(e, { source: "cron.billing.subscriptions" });
+    result.errors.push("subscription cycle failed");
+  }
+
+  log("info", "cron run complete", { errors: result.errors.length });
+  // A crashed run means missed charges — surface it rather than reporting success.
+  return Response.json({ ok: result.errors.length === 0, ...result }, {
+    status: result.errors.length ? 500 : 200,
+  });
 }
 
 export const GET = handle;

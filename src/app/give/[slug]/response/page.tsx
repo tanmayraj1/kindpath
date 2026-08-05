@@ -93,6 +93,8 @@ export default async function HostedResponsePage({
     orgId: org.id,
     amount: state.amount,
     currency: state.currency,
+    brand: confirmed.cardBrand ?? null,
+    last4: confirmed.last4 ?? null,
   });
 
   return (

@@ -7,6 +7,7 @@ import { CampaignComposer } from "@/components/dashboard/campaign-composer";
 import { requireOrgUser } from "@/lib/auth/guards";
 import { assertFeature } from "@/lib/access";
 import { getCommsData } from "@/lib/queries/comms";
+import { DeliveryFailures } from "@/components/dashboard/delivery-failures";
 
 export const metadata = { title: "Communications" };
 
@@ -19,6 +20,10 @@ export default async function CommunicationsPage() {
     <>
       <Topbar title="Communications" user={{ name: session.name, email: session.email }} />
       <main className="flex flex-col gap-6 p-6">
+        {/* Undelivered transactional mail comes first — it's the only thing on
+            this page that means a donor is missing something they're owed. */}
+        <DeliveryFailures orgId={session.orgId} />
+
         <Card>
           <CardContent className="flex items-start gap-3 p-5">
             <ShieldCheck className="mt-0.5 size-5 shrink-0 text-success" />

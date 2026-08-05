@@ -14,19 +14,17 @@ const columns = [
   {
     title: "Compliance",
     links: [
-      { href: "#", label: "CRA tax receipts" },
-      { href: "#", label: "CASL & privacy" },
-      { href: "#", label: "PCI-DSS" },
-      { href: "#", label: "Data residency" },
+      { href: "/privacy", label: "CASL & privacy" },
+      { href: "/terms#your-responsibilities-as-a-registered-charity", label: "CRA tax receipts" },
+      { href: "/privacy#where-your-information-is-stored", label: "Data residency" },
     ],
   },
   {
     title: "Company",
     links: [
-      { href: "#", label: "About" },
-      { href: "#", label: "Contact" },
-      { href: "#", label: "Terms" },
-      { href: "#", label: "Privacy" },
+      { href: "/contact", label: "Contact" },
+      { href: "/terms", label: "Terms of service" },
+      { href: "/privacy", label: "Privacy policy" },
     ],
   },
 ];

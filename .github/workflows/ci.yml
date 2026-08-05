@@ -1,0 +1,112 @@
+name: CI
+
+# Vercel auto-deploys `main`, so this is the only thing standing between a bad
+# commit and production. It must run on every push and PR, and it must include
+# the tenant-isolation check — a migration that adds a table without an RLS
+# policy would otherwise reach production and expose every tenant's data.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Types, tests, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+        env:
+          # The build must succeed WITHOUT runtime secrets — assertEnv() skips its
+          # hard failure during the build phase precisely so this stays true. If
+          # this step starts needing real credentials, that guarantee has broken.
+          NEXT_PHASE: phase-production-build
+
+  tenant-isolation:
+    name: Tenant isolation (RLS)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: kindpath_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      ADMIN_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/kindpath_ci
+      APP_DATABASE_URL: postgresql://kindpath_app:ci_app_pw@localhost:5432/kindpath_ci
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/kindpath_ci
+      AUTH_SECRET: ci-only-secret-that-is-at-least-32-chars-long
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npx prisma generate
+
+      # The non-superuser role the app connects as. It must NOT be able to read
+      # across tenants, which is what the verifier proves below.
+      - name: Create the app role
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d kindpath_ci -v ON_ERROR_STOP=1 <<'SQL'
+            DO $$
+            BEGIN
+              IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'kindpath_app') THEN
+                CREATE ROLE kindpath_app LOGIN PASSWORD 'ci_app_pw';
+              END IF;
+            END $$;
+            GRANT CONNECT ON DATABASE kindpath_ci TO kindpath_app;
+            GRANT USAGE ON SCHEMA public TO kindpath_app;
+          SQL
+
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+
+      - name: Apply row-level security policies
+        run: npx prisma db execute --file prisma/sql/rls.sql --schema prisma/schema.prisma
+
+      # Seeds two organizations so the cross-tenant probe has something to leak.
+      # A probe against an empty database proves nothing.
+      - name: Seed
+        run: npx prisma db seed
+
+      - name: Verify tenant isolation
+        run: npx tsx scripts/verify-rls.ts
+        env:
+          # Fail rather than pass vacuously if the seed produced no tenants.
+          REQUIRE_TENANT_DATA: "1"

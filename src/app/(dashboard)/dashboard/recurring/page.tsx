@@ -5,9 +5,11 @@ import { Badge } from "@/components/ui/badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { OrgPlanControls } from "@/components/dashboard/org-plan-controls";
+import { ListSearch, Pagination } from "@/components/ui/list-controls";
 import { requireOrgUser } from "@/lib/auth/guards";
 import { assertFeature } from "@/lib/access";
 import { listRecurringPlans } from "@/lib/queries/org";
+import { parsePageParams } from "@/lib/pagination";
 import { formatCAD } from "@/lib/utils";
 
 export const metadata = { title: "Recurring plans" };
@@ -19,25 +21,42 @@ const statusVariant: Record<string, "success" | "warning" | "neutral" | "destruc
   suspended: "destructive",
 };
 
-export default async function RecurringPage() {
+export default async function RecurringPage({
+  searchParams,
+}: {
+  searchParams: { page?: string; q?: string; size?: string };
+}) {
   const session = await requireOrgUser();
   await assertFeature(session.orgId, "recurring");
-  const plans = await listRecurringPlans(session.orgId);
+  const params = parsePageParams(searchParams);
+  const plans = await listRecurringPlans(session.orgId, params);
 
   return (
     <>
       <Topbar title="Recurring plans" user={{ name: session.name, email: session.email }} />
       <main className="flex flex-col gap-6 p-6">
-        <p className="text-sm text-muted-foreground">
-          {plans.length} {plans.length === 1 ? "plan" : "plans"}
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
+            {plans.total} {plans.total === 1 ? "plan" : "plans"}
+          </p>
+          <ListSearch
+            action="/dashboard/recurring"
+            q={plans.q}
+            placeholder="Search by donor"
+            label="Search recurring plans"
+          />
+        </div>
         <Card>
           <CardContent className="p-6">
-            {plans.length === 0 ? (
+            {plans.rows.length === 0 ? (
               <EmptyState
                 icon={<Repeat className="size-5" />}
-                title="No recurring plans yet"
-                body="When donors set up recurring gifts, their plans appear here with billing schedules."
+                title={plans.q ? `No plans matching “${plans.q}”` : "No recurring plans yet"}
+                body={
+                  plans.q
+                    ? "Try a different donor name or email."
+                    : "When donors set up recurring gifts, their plans appear here with billing schedules."
+                }
               />
             ) : (
               <Table>
@@ -51,7 +70,7 @@ export default async function RecurringPage() {
                   <Th className="text-right">Manage</Th>
                 </Thead>
                 <tbody>
-                  {plans.map((p) => (
+                  {plans.rows.map((p) => (
                     <Tr key={p.id}>
                       <Td className="font-medium">{p.donor}</Td>
                       <Td className="text-muted-foreground">{p.fund}</Td>
@@ -77,6 +96,9 @@ export default async function RecurringPage() {
                 </tbody>
               </Table>
             )}
+            <div className="mt-4">
+              <Pagination basePath="/dashboard/recurring" data={plans} noun="plans" />
+            </div>
           </CardContent>
         </Card>
       </main>

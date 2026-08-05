@@ -5,32 +5,49 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ListSearch, Pagination } from "@/components/ui/list-controls";
 import { requireOrgUser } from "@/lib/auth/guards";
 import { listDonors } from "@/lib/queries/org";
+import { parsePageParams } from "@/lib/pagination";
 import { formatCAD } from "@/lib/utils";
 
 export const metadata = { title: "Donors" };
 
-export default async function DonorsPage() {
+export default async function DonorsPage({
+  searchParams,
+}: {
+  searchParams: { page?: string; q?: string; size?: string };
+}) {
   const session = await requireOrgUser();
-  const donors = await listDonors(session.orgId);
+  const params = parsePageParams(searchParams);
+  const donors = await listDonors(session.orgId, params);
 
   return (
     <>
       <Topbar title="Donors" user={{ name: session.name, email: session.email }} />
       <main className="flex flex-col gap-6 p-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">
-            {donors.length} {donors.length === 1 ? "donor" : "donors"}
+            {donors.total} {donors.total === 1 ? "donor" : "donors"}
           </p>
+          <ListSearch
+            action="/dashboard/donors"
+            q={donors.q}
+            placeholder="Search by name or email"
+            label="Search donors"
+          />
         </div>
         <Card>
           <CardContent className="p-6">
-            {donors.length === 0 ? (
+            {donors.rows.length === 0 ? (
               <EmptyState
                 icon={<Users className="size-5" />}
-                title="No donors yet"
-                body="Donors appear here automatically when they give through your donation page."
+                title={donors.q ? `No donors matching “${donors.q}”` : "No donors yet"}
+                body={
+                  donors.q
+                    ? "Try a different name or email address."
+                    : "Donors appear here automatically when they give through your donation page."
+                }
               />
             ) : (
               <Table>
@@ -43,7 +60,7 @@ export default async function DonorsPage() {
                   <Th className="text-right">Consent</Th>
                 </Thead>
                 <tbody>
-                  {donors.map((d) => (
+                  {donors.rows.map((d) => (
                     <Tr key={d.id} className="cursor-pointer hover:bg-secondary/40">
                       <Td>
                         <Link href={`/dashboard/donors/${d.id}`} className="flex items-center gap-3">
@@ -81,6 +98,9 @@ export default async function DonorsPage() {
                 </tbody>
               </Table>
             )}
+            <div className="mt-4">
+              <Pagination basePath="/dashboard/donors" data={donors} noun="donors" />
+            </div>
           </CardContent>
         </Card>
       </main>

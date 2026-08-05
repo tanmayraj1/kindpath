@@ -11,6 +11,14 @@ export type ChargePayload = {
   orgId: string;
   amount: number;
   currency: string;
+  /**
+   * Card metadata reported by the gateway, when it reports any. Carried through
+   * so a saved payment method shows the donor's ACTUAL card in their portal.
+   * Previously every saved method was labelled "Visa •••• 4242" regardless of
+   * what was used, which is worse than showing nothing.
+   */
+  brand?: string | null;
+  last4?: string | null;
   exp: number; // unix seconds
 };
 

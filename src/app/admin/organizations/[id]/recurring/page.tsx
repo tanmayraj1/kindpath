@@ -16,7 +16,7 @@ export default async function OrgRecurring({ params }: { params: { id: string } 
   return (
     <Card>
       <CardContent className="p-6">
-        {plans.length === 0 ? (
+        {plans.total === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">No recurring plans.</p>
         ) : (
           <Table>
@@ -29,7 +29,7 @@ export default async function OrgRecurring({ params }: { params: { id: string } 
               <Th className="text-right">Status</Th>
             </Thead>
             <tbody>
-              {plans.map((p) => (
+              {plans.rows.map((p) => (
                 <Tr key={p.id}>
                   <Td className="font-medium">{p.donor}</Td>
                   <Td className="text-muted-foreground">{p.fund}</Td>

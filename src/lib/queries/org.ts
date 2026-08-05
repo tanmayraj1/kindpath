@@ -1,40 +1,117 @@
 import { withTenant } from "@/lib/tenant";
+import { paged, type PageParams, type Paged } from "@/lib/pagination";
 
 /** Org row (own tenant). */
 export function getOrg(orgId: string) {
   return withTenant(orgId, (tx) => tx.organization.findUnique({ where: { id: orgId } }));
 }
 
-/** Donor list with aggregate giving + recurring status. */
-export function listDonors(orgId: string) {
+export type DonorRow = {
+  id: string;
+  name: string;
+  email: string;
+  addressComplete: boolean;
+  casl: string;
+  recurring: boolean;
+  totalGiven: number;
+};
+
+/**
+ * Donor list with aggregate giving + recurring status, paginated and searchable.
+ *
+ * Totals come from a groupBy over the page's donors rather than by including
+ * every donation row: the previous version loaded the whole donor table plus
+ * every donation attached to it, then summed in JavaScript.
+ */
+export function listDonors(orgId: string, p: PageParams): Promise<Paged<DonorRow>> {
   return withTenant(orgId, async (tx) => {
-    const donors = await tx.donor.findMany({
-      orderBy: { createdAt: "desc" },
-      include: {
-        donations: { where: { status: "succeeded" }, select: { amount: true } },
-        recurringPlans: { where: { status: "active" }, select: { id: true } },
-      },
-    });
-    return donors.map((d) => ({
-      id: d.id,
-      name: `${d.firstName} ${d.lastName}`,
-      email: d.email,
-      addressComplete: d.addressStatus === "complete",
-      casl: d.caslConsent,
-      recurring: d.recurringPlans.length > 0,
-      totalGiven: d.donations.reduce((s, x) => s + Number(x.amount), 0),
-    }));
+    const where = p.q
+      ? {
+          OR: [
+            { firstName: { contains: p.q, mode: "insensitive" as const } },
+            { lastName: { contains: p.q, mode: "insensitive" as const } },
+            { email: { contains: p.q, mode: "insensitive" as const } },
+          ],
+        }
+      : {};
+
+    const [total, donors] = await Promise.all([
+      tx.donor.count({ where }),
+      tx.donor.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: p.skip,
+        take: p.size,
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          addressStatus: true,
+          caslConsent: true,
+        },
+      }),
+    ]);
+
+    const ids = donors.map((d) => d.id);
+    const [sums, activePlans] = ids.length
+      ? await Promise.all([
+          tx.donation.groupBy({
+            by: ["donorId"],
+            where: { donorId: { in: ids }, status: "succeeded" },
+            _sum: { amount: true },
+          }),
+          tx.recurringPlan.findMany({
+            where: { donorId: { in: ids }, status: "active" },
+            select: { donorId: true },
+          }),
+        ])
+      : [[], []];
+
+    const totals = new Map(sums.map((r) => [r.donorId, Number(r._sum.amount ?? 0)]));
+    const recurring = new Set(activePlans.map((r) => r.donorId));
+
+    return paged(
+      donors.map((d) => ({
+        id: d.id,
+        name: `${d.firstName} ${d.lastName}`,
+        email: d.email,
+        addressComplete: d.addressStatus === "complete",
+        casl: d.caslConsent as string,
+        recurring: recurring.has(d.id),
+        totalGiven: totals.get(d.id) ?? 0,
+      })),
+      total,
+      p
+    );
   });
 }
 
-/** Recurring plans with donor + fund names. */
-export function listRecurringPlans(orgId: string) {
+/** Recurring plans with donor + fund names, paginated and searchable by donor. */
+export function listRecurringPlans(orgId: string, page?: PageParams) {
   return withTenant(orgId, async (tx) => {
-    const plans = await tx.recurringPlan.findMany({
-      orderBy: { startedAt: "desc" },
-      include: { donor: true, fund: true },
-    });
-    return plans.map((p) => ({
+    const q = page?.q ?? "";
+    const where = q
+      ? {
+          donor: {
+            OR: [
+              { firstName: { contains: q, mode: "insensitive" as const } },
+              { lastName: { contains: q, mode: "insensitive" as const } },
+              { email: { contains: q, mode: "insensitive" as const } },
+            ],
+          },
+        }
+      : {};
+    const [total, plans] = await Promise.all([
+      tx.recurringPlan.count({ where }),
+      tx.recurringPlan.findMany({
+        where,
+        orderBy: { startedAt: "desc" },
+        include: { donor: true, fund: true },
+        ...(page ? { skip: page.skip, take: page.size } : {}),
+      }),
+    ]);
+    const rows = plans.map((p) => ({
       id: p.id,
       donor: `${p.donor.firstName} ${p.donor.lastName}`,
       fund: p.fund?.name ?? "—",
@@ -43,6 +120,7 @@ export function listRecurringPlans(orgId: string) {
       status: p.status,
       nextBillingDate: p.nextBillingDate,
     }));
+    return page ? paged(rows, total, page) : paged(rows, total, { page: 1, size: rows.length || 1, q: "", skip: 0 });
   });
 }
 

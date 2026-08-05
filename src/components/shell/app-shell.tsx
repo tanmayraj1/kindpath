@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { X } from "lucide-react";
@@ -20,10 +20,13 @@ function NavLinks({
   items,
   base,
   onNavigate,
+  hidden,
 }: {
   items: NavItem[];
   base: string;
   onNavigate?: () => void;
+  /** True when this copy of the nav is off-screen (closed mobile drawer). */
+  hidden?: boolean;
 }) {
   const pathname = usePathname();
   return (
@@ -38,6 +41,11 @@ function NavLinks({
             key={item.href}
             href={item.href}
             onClick={onNavigate}
+            // A closed drawer is only translated off-screen, so without this its
+            // links stay in the tab order and keyboard focus disappears into a
+            // panel the user can't see.
+            tabIndex={hidden ? -1 : undefined}
+            aria-current={active ? "page" : undefined}
             className={cn(
               "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
               active
@@ -69,6 +77,8 @@ export function AppShell({
 }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
+  const drawerRef = useRef<HTMLElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
 
   // close the drawer on navigation
   useEffect(() => setOpen(false), [pathname]);
@@ -78,6 +88,48 @@ export function AppShell({
     document.body.style.overflow = open ? "hidden" : "";
     return () => {
       document.body.style.overflow = "";
+    };
+  }, [open]);
+
+  // Keyboard handling for the mobile drawer: move focus in, keep Tab inside it,
+  // close on Escape, and return focus to the button that opened it.
+  useEffect(() => {
+    if (!open) return;
+    openerRef.current = document.activeElement as HTMLElement | null;
+
+    const focusables = () =>
+      Array.from(
+        drawerRef.current?.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        ) ?? []
+      );
+
+    focusables()[0]?.focus();
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setOpen(false);
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const items = focusables();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      openerRef.current?.focus();
     };
   }, [open]);
 
@@ -105,6 +157,12 @@ export function AppShell({
           aria-hidden
         />
         <aside
+          ref={drawerRef}
+          id="mobile-nav"
+          role="dialog"
+          aria-modal={open}
+          aria-hidden={!open}
+          inert={!open}
           className={cn(
             "fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col border-r border-border bg-card transition-transform duration-300 lg:hidden",
             open ? "translate-x-0" : "-translate-x-full"
@@ -112,19 +170,25 @@ export function AppShell({
           aria-label="Navigation"
         >
           <div className="flex h-16 items-center justify-between border-b border-border px-5">
-            <Link href={homeHref} aria-label="KindPath" onClick={() => setOpen(false)}>
+            <Link
+              href={homeHref}
+              aria-label="KindPath"
+              tabIndex={open ? undefined : -1}
+              onClick={() => setOpen(false)}
+            >
               <Logo />
             </Link>
             <button
               type="button"
               onClick={() => setOpen(false)}
               aria-label="Close menu"
+              tabIndex={open ? undefined : -1}
               className="grid size-9 place-items-center rounded-lg text-muted-foreground hover:bg-secondary"
             >
               <X className="size-5" />
             </button>
           </div>
-          <NavLinks items={items} base={base} onNavigate={() => setOpen(false)} />
+          <NavLinks items={items} base={base} hidden={!open} onNavigate={() => setOpen(false)} />
           {footer && <div className="border-t border-border p-3">{footer}</div>}
         </aside>
 

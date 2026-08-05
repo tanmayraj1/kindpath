@@ -5,6 +5,7 @@ import { logoutAction } from "@/app/(auth)/actions";
 import { requireOrgUser } from "@/lib/auth/guards";
 import { getOrgPlanUsage } from "@/lib/queries/org-dashboard";
 import { getOrgAccess } from "@/lib/access";
+import { BillingBanner } from "@/components/dashboard/billing-banner";
 
 export default async function DashboardLayout({
   children,
@@ -17,8 +18,10 @@ export default async function DashboardLayout({
     getOrgAccess(session.orgId),
   ]);
 
-  // Access revoked (suspended org or cancelled subscription) → lock the app.
+  // Access revoked (suspended org or unpaid past the grace window) → lock the app,
+  // but never imply data loss: everything is retained and exportable on restore.
   if (!access.active) {
+    const unpaid = access.billing === "locked" && access.status === "active";
     return (
       <div className="grid min-h-screen place-items-center bg-secondary/30 p-6">
         <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 text-center shadow-sm">
@@ -30,8 +33,16 @@ export default async function DashboardLayout({
           </span>
           <h1 className="mt-4 font-display text-xl font-bold">Account access paused</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Your organization&apos;s access is currently {access.status === "suspended" ? "suspended" : "inactive"}.
-            Please contact KindPath support to restore access.
+            {unpaid
+              ? "Your subscription has an unpaid invoice, so the dashboard is paused."
+              : `Your organization's access is currently ${
+                  access.status === "suspended" ? "suspended" : "inactive"
+                }.`}{" "}
+            Nothing has been deleted — your donors, donation history and every receipt you&apos;ve
+            issued are retained and will be exactly as you left them.
+          </p>
+          <p className="mt-3 text-sm text-muted-foreground">
+            Contact KindPath support to restore access.
           </p>
           <form action={logoutAction} className="mt-6">
             <button type="submit" className="text-sm font-medium text-brand-600 hover:underline">
@@ -51,6 +62,7 @@ export default async function DashboardLayout({
       pct={usage.pct}
       features={access.features}
     >
+      <BillingBanner billing={access.billing} daysLeft={access.daysLeft} />
       {children}
     </OrgShell>
   );

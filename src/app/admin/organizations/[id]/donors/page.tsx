@@ -1,15 +1,23 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/table";
+import { Pagination } from "@/components/ui/list-controls";
+import { parsePageParams } from "@/lib/pagination";
 import { listDonors } from "@/lib/queries/org";
 import { formatCAD } from "@/lib/utils";
 
-export default async function OrgDonors({ params }: { params: { id: string } }) {
-  const donors = await listDonors(params.id);
+export default async function OrgDonors({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams: { page?: string; q?: string; size?: string };
+}) {
+  const donors = await listDonors(params.id, parsePageParams(searchParams));
   return (
     <Card>
       <CardContent className="p-6">
-        {donors.length === 0 ? (
+        {donors.total === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">No donors yet.</p>
         ) : (
           <Table>
@@ -21,7 +29,7 @@ export default async function OrgDonors({ params }: { params: { id: string } }) 
               <Th className="text-right">Receipt info</Th>
             </Thead>
             <tbody>
-              {donors.map((d) => (
+              {donors.rows.map((d) => (
                 <Tr key={d.id}>
                   <Td className="font-medium">{d.name}</Td>
                   <Td className="text-muted-foreground">{d.email}</Td>
@@ -43,6 +51,13 @@ export default async function OrgDonors({ params }: { params: { id: string } }) 
             </tbody>
           </Table>
         )}
+        <div className="mt-4">
+          <Pagination
+            basePath={`/admin/organizations/${params.id}/donors`}
+            data={donors}
+            noun="donors"
+          />
+        </div>
       </CardContent>
     </Card>
   );

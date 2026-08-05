@@ -327,6 +327,7 @@ model SubscriptionInvoice {
   org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@index([orgId])
+  @@index([orgId, issuedAt])
   @@map("subscription_invoices")
 }
 
@@ -370,6 +371,8 @@ model Donor {
 
   @@unique([orgId, email])
   @@index([orgId])
+  /// Backs the donor list's default sort (newest first, scoped to the org).
+  @@index([orgId, createdAt])
   @@map("donors")
 }
 
@@ -612,6 +615,10 @@ model Receipt {
 
   @@unique([orgId, serialNumber])
   @@index([orgId, donorId, year])
+  /// Backs the receipts list's default sort.
+  @@index([orgId, dateIssued])
+  /// Backs the "has this receipt already been replaced?" check on reissue.
+  @@index([orgId, replacesSerial])
   @@map("receipts")
 }
 
@@ -642,6 +649,8 @@ model Notification {
   org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@index([orgId])
+  /// Backs the undelivered-transactional-mail query on the communications page.
+  @@index([orgId, status, createdAt])
   @@map("notifications")
 }
 
@@ -659,6 +668,7 @@ model AuditLog {
   createdAt  DateTime @default(now()) @map("created_at")
 
   @@index([orgId])
+  @@index([orgId, createdAt])
   @@map("audit_log")
 }
 

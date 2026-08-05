@@ -8,6 +8,7 @@ import { completeMembership, type MembershipState } from "@/app/join/[slug]/acti
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { DemoPaymentNotice } from "./demo-payment-notice";
 import { SubmitButton } from "@/components/auth/submit-button";
 import { cn, formatCAD } from "@/lib/utils";
 
@@ -86,7 +87,7 @@ export function MembershipJoin({ org, plans }: { org: Org; plans: Plan[] }) {
           <div className="flex flex-col gap-5">
             <Header
               icon={<CreditCard className="size-5" />}
-              title="Payment"
+              title="Demo payment"
               subtitle={`${plan.name} · ${formatCAD(plan.amount)}${per[plan.frequency] ?? ""}`}
             />
             {payError && (
@@ -94,24 +95,12 @@ export function MembershipJoin({ org, plans }: { org: Org; plans: Plan[] }) {
                 <AlertCircle className="size-4 shrink-0" /> {payError}
               </div>
             )}
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-col gap-2">
-                <Label>Card number</Label>
-                <Input defaultValue="4242 4242 4242 4242" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex flex-col gap-2"><Label>Expiry</Label><Input defaultValue="12 / 30" /></div>
-                <div className="flex flex-col gap-2"><Label>CVC</Label><Input defaultValue="123" /></div>
-              </div>
-            </div>
-            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Lock className="size-3.5" /> Demo mode — no real charge.
-            </p>
+            <DemoPaymentNotice />
             <div className="flex gap-2">
               <Button variant="outline" size="lg" disabled={charging} onClick={() => setStep(1)}>Back</Button>
               <Button size="lg" className="flex-1" disabled={charging} onClick={pay}>
-                {charging && <Loader2 className="size-4 animate-spin" />}
-                Pay {formatCAD(plan.amount, { maximumFractionDigits: 0 })}
+                {charging && <Loader2 className="size-4 animate-spin" aria-hidden />}
+                Simulate approved payment · {formatCAD(plan.amount, { maximumFractionDigits: 0 })}
               </Button>
             </div>
           </div>

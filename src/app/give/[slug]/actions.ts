@@ -218,8 +218,11 @@ async function recordDonation(d: CompleteInput): Promise<{ receiptId: string } |
           orgId: org.id,
           donorId: donor.id,
           providerToken: `tok_${chargeRef}`,
-          brand: "Visa",
-          last4: "4242",
+          // Only what the gateway actually told us. Null renders as
+          // "Card •••• ····" in the portal, which is honest; a hardcoded
+          // "Visa •••• 4242" is not.
+          brand: charge.brand ?? null,
+          last4: charge.last4 ?? null,
           isDefault: true,
         },
       });

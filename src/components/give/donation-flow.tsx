@@ -212,77 +212,51 @@ export function DonationFlow({
           </div>
         )}
 
-        {/* STEP 2 — payment (mock) */}
+        {/* STEP 2 — demo payment.
+            Only reachable when no real gateway is configured: a live provider
+            uses the hosted flow above and never lands here. It deliberately shows
+            NO card fields. The previous version rendered a card number, expiry
+            and CVC (pre-filled with 4242…) plus Apple/Google Pay buttons, none of
+            which collected or charged anything — a public page dressed up as a
+            real checkout is a page that teaches donors to trust a fake one. */}
         {step === 2 && (
           <div className="flex flex-col gap-5">
             <Header
               icon={<CreditCard className="size-5" />}
-              title="Payment"
+              title="Demo payment"
               subtitle={`${formatCAD(effectiveAmount)}${frequency === "monthly" ? " every month" : ""}`}
             />
 
             {payError && (
-              <div className="flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
-                <AlertCircle className="size-4 shrink-0" />
+              <div
+                role="alert"
+                className="flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5 text-sm text-destructive"
+              >
+                <AlertCircle className="size-4 shrink-0" aria-hidden />
                 {payError}
               </div>
             )}
 
-            {/* express wallets — route through the same secure charge */}
-            <div className="flex flex-col gap-2">
-              <Button
-                size="lg"
-                className="w-full bg-black text-white hover:bg-black/90"
-                disabled={charging}
-                onClick={pay}
-              >
-                 Pay
-              </Button>
-              <Button
-                variant="outline"
-                size="lg"
-                className="w-full"
-                disabled={charging}
-                onClick={pay}
-              >
-                G Pay
-              </Button>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="h-px flex-1 bg-border" />
-              <span className="text-xs text-muted-foreground">or pay by card</span>
-              <span className="h-px flex-1 bg-border" />
-            </div>
-
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-col gap-2">
-                <Label>Card number</Label>
-                <Input placeholder="4242 4242 4242 4242" defaultValue="4242 4242 4242 4242" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex flex-col gap-2">
-                  <Label>Expiry</Label>
-                  <Input placeholder="MM / YY" defaultValue="12 / 30" />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label>CVC</Label>
-                  <Input placeholder="123" defaultValue="123" />
-                </div>
+            <div className="flex items-start gap-3 rounded-xl border border-warning/30 bg-warning/5 p-4">
+              <Lock className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
+              <div className="text-sm">
+                <p className="font-medium text-foreground">
+                  This organization has no payment provider connected yet.
+                </p>
+                <p className="mt-1 text-muted-foreground">
+                  No card is collected and no money moves. Continuing simulates an approved payment
+                  so the receipt flow can be demonstrated end to end.
+                </p>
               </div>
             </div>
-
-            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Lock className="size-3.5" /> Demo mode — no real charge. Card is tokenized; we never
-              store card numbers.
-            </p>
 
             <div className="flex gap-2">
               <Button variant="outline" size="lg" onClick={() => setStep(1)} disabled={charging}>
                 Back
               </Button>
               <Button size="lg" className="flex-1" onClick={pay} disabled={charging}>
-                {charging && <Loader2 className="size-4 animate-spin" />}
-                Pay {formatCAD(effectiveAmount, { maximumFractionDigits: 0 })}
+                {charging && <Loader2 className="size-4 animate-spin" aria-hidden />}
+                Simulate approved payment · {formatCAD(effectiveAmount, { maximumFractionDigits: 0 })}
               </Button>
             </div>
           </div>

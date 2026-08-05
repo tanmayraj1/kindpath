@@ -128,9 +128,10 @@ export async function runBillingNow() {
   return summary;
 }
 
+/** Platform-admin audit entry. `orgId` is empty for platform-wide actions. */
 async function audit(actorId: string, orgId: string, action: string, entityType?: string, entityId?: string) {
   await adminDb.auditLog.create({
-    data: { orgId, actorType: "platform_admin", actorId, action, entityType, entityId },
+    data: { orgId: orgId || null, actorType: "platform_admin", actorId, action, entityType, entityId },
   });
 }
 
@@ -386,4 +387,56 @@ export async function clearPosCredentials(orgId: string): Promise<void> {
   invalidateOrgProvider(orgId);
   await audit(admin.sub, orgId, "org.pos_credentials.cleared", "organization", orgId);
   revalidatePath(`/admin/organizations/${orgId}/settings`);
+}
+
+// ---- KindPath's own revenue: invoices + subscription lifecycle ----
+export type InvoiceState = { error?: string; ok?: boolean; message?: string };
+
+/** Issue this period's invoice for one org, on demand (God Mode). */
+export async function issueInvoiceNow(orgId: string): Promise<InvoiceState> {
+  const admin = await requirePlatformAdmin();
+  const { issueInvoiceForOrg } = await import("@/lib/subscriptions");
+  try {
+    const result = await issueInvoiceForOrg(orgId);
+    await audit(admin.sub, orgId, "subscription.invoice_issued_manually", "organization", orgId);
+    revalidatePath("/admin/revenue");
+    return "invoiceNumber" in result
+      ? { ok: true, message: `Issued ${result.invoiceNumber}.` }
+      : { error: `Not issued: ${result.skipped}.` };
+  } catch (e) {
+    const { captureError } = await import("@/lib/observability");
+    captureError(e, { source: "admin.issueInvoiceNow", orgId });
+    return { error: "Couldn't issue that invoice. The error has been logged." };
+  }
+}
+
+/** Record payment received out-of-band (cheque, e-transfer, bank deposit). */
+export async function markInvoicePaidAction(invoiceId: string): Promise<InvoiceState> {
+  const admin = await requirePlatformAdmin();
+  const { markInvoicePaid } = await import("@/lib/subscriptions");
+  const result = await markInvoicePaid(invoiceId, admin.sub);
+  revalidatePath("/admin/revenue");
+  revalidatePath("/admin/subscriptions");
+  return "error" in result ? result : { ok: true, message: "Marked paid." };
+}
+
+/** Run the whole subscription cycle now rather than waiting for the daily cron. */
+export async function runSubscriptionCycleNow(): Promise<InvoiceState> {
+  const admin = await requirePlatformAdmin();
+  const { runSubscriptionCycle } = await import("@/lib/subscriptions");
+  try {
+    const s = await runSubscriptionCycle();
+    await audit(admin.sub, "", "subscription.cycle_run_manually");
+    revalidatePath("/admin/revenue");
+    return {
+      ok: true,
+      message:
+        `${s.trialsExpired} trial(s) ended · ${s.invoicesIssued} invoice(s) issued · ` +
+        `${s.suspended} paused${s.errored ? ` · ${s.errored} error(s) logged` : ""}.`,
+    };
+  } catch (e) {
+    const { captureError } = await import("@/lib/observability");
+    captureError(e, { source: "admin.runSubscriptionCycleNow" });
+    return { error: "The cycle failed to run. The error has been logged." };
+  }
 }

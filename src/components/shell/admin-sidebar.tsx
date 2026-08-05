@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboard, Building2, CreditCard, BarChart3, LifeBuoy } from "lucide-react";
+import { LayoutDashboard, Building2, CreditCard, Receipt, BarChart3, LifeBuoy } from "lucide-react";
 import { AppShell, type NavItem } from "./app-shell";
 import { Badge } from "@/components/ui/badge";
 
@@ -8,6 +8,7 @@ const items: NavItem[] = [
   { href: "/admin", label: "Overview", icon: LayoutDashboard },
   { href: "/admin/organizations", label: "Organizations", icon: Building2 },
   { href: "/admin/subscriptions", label: "Subscriptions", icon: CreditCard },
+  { href: "/admin/revenue", label: "Revenue", icon: Receipt },
   { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/admin/support", label: "Support", icon: LifeBuoy },
 ];

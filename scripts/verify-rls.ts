@@ -82,6 +82,14 @@ async function main() {
   if (orgCount === 0) {
     console.log("\n  !  admin role sees 0 organizations — either an empty DB, or the admin role");
     console.log("     does NOT bypass FORCE RLS (login/cron/seed would be broken). Verify.");
+    // On an empty database the cross-tenant probe below is vacuous: every count
+    // is 0 because there is nothing to read, not because isolation works. CI sets
+    // REQUIRE_TENANT_DATA so a failed seed can't be mistaken for a passing check.
+    if (process.env.REQUIRE_TENANT_DATA) {
+      failures.push(
+        "database has no organizations — the cross-tenant probe would pass vacuously; seed first"
+      );
+    }
   } else {
     console.log(`\n  ✓  admin role bypasses RLS (sees ${orgCount} organizations)`);
   }

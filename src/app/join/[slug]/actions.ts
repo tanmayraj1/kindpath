@@ -84,7 +84,14 @@ export async function completeMembership(
     });
 
     const pm = await tx.donorPaymentMethod.create({
-      data: { orgId: org.id, donorId: donor.id, providerToken: `tok_${charge.ref}`, brand: "Visa", last4: "4242", isDefault: true },
+      data: {
+        orgId: org.id,
+        donorId: donor.id,
+        providerToken: `tok_${charge.ref}`,
+        brand: charge.brand ?? null,
+        last4: charge.last4 ?? null,
+        isDefault: true,
+      },
     });
     const recurring = await tx.recurringPlan.create({
       data: {

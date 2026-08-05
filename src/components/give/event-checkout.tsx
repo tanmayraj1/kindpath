@@ -8,6 +8,7 @@ import { completeTicketPurchase, type TicketState } from "@/app/e/[slug]/[event]
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { DemoPaymentNotice } from "./demo-payment-notice";
 import { SubmitButton } from "@/components/auth/submit-button";
 import { cn, formatCAD } from "@/lib/utils";
 
@@ -74,24 +75,20 @@ export function EventCheckout({ org, eventId, ticketTypes }: { org: Org; eventId
 
         {step === 2 && tt && (
           <div className="flex flex-col gap-5">
-            <Header icon={<CreditCard className="size-5" />} title="Payment" subtitle={`${qty}× ${tt.name} · ${formatCAD(total)}`} />
+            <Header icon={<CreditCard className="size-5" />} title="Demo payment" subtitle={`${qty}× ${tt.name} · ${formatCAD(total)}`} />
             {tt.advantage > 0 && (
               <p className="rounded-lg bg-secondary/60 p-3 text-xs text-muted-foreground">
                 {formatCAD(eligible)} of this is an eligible gift for tax purposes; {formatCAD(total - eligible)} is the value of admission.
               </p>
             )}
             {payError && <div className="flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5 text-sm text-destructive"><AlertCircle className="size-4 shrink-0" /> {payError}</div>}
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-col gap-2"><Label>Card number</Label><Input defaultValue="4242 4242 4242 4242" /></div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex flex-col gap-2"><Label>Expiry</Label><Input defaultValue="12 / 30" /></div>
-                <div className="flex flex-col gap-2"><Label>CVC</Label><Input defaultValue="123" /></div>
-              </div>
-            </div>
-            <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Lock className="size-3.5" /> Demo mode — no real charge.</p>
+            <DemoPaymentNotice />
             <div className="flex gap-2">
               <Button variant="outline" size="lg" disabled={charging} onClick={() => setStep(1)}>Back</Button>
-              <Button size="lg" className="flex-1" disabled={charging} onClick={pay}>{charging && <Loader2 className="size-4 animate-spin" />} Pay {formatCAD(total, { maximumFractionDigits: 0 })}</Button>
+              <Button size="lg" className="flex-1" disabled={charging} onClick={pay}>
+                {charging && <Loader2 className="size-4 animate-spin" aria-hidden />}
+                Simulate approved payment · {formatCAD(total, { maximumFractionDigits: 0 })}
+              </Button>
             </div>
           </div>
         )}
