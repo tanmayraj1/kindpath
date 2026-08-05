@@ -1,10 +1,11 @@
 "use client";
 
 import { useFormState } from "react-dom";
-import { AlertCircle, CheckCircle2 } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { completeDonation, type CompleteState } from "@/app/give/[slug]/actions";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Field } from "@/components/ui/field";
+import { FormAlert } from "@/components/ui/form-alert";
 import { SubmitButton } from "@/components/auth/submit-button";
 
 const PROVINCES = ["AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE", "QC", "SK", "YT"];
@@ -41,12 +42,7 @@ export function HostedDetailsForm(props: {
         </p>
       </div>
 
-      {state.error && (
-        <div className="flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
-          <AlertCircle className="size-4 shrink-0" />
-          {state.error}
-        </div>
-      )}
+      <FormAlert>{state.error}</FormAlert>
 
       <input type="hidden" name="slug" value={props.slug} />
       <input type="hidden" name="chargeRef" value={props.chargeRef} />
@@ -56,28 +52,46 @@ export function HostedDetailsForm(props: {
       <input type="hidden" name="frequency" value={props.frequency} />
 
       <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="firstName">First name</Label>
-          <Input id="firstName" name="firstName" required />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="lastName">Last name</Label>
-          <Input id="lastName" name="lastName" required />
-        </div>
+        <Field
+          name="firstName"
+          label="First name"
+          errors={state.fields}
+          autoComplete="given-name"
+          required
+        />
+        <Field
+          name="lastName"
+          label="Last name"
+          errors={state.fields}
+          autoComplete="family-name"
+          required
+        />
       </div>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="email">Email</Label>
-        <Input id="email" name="email" type="email" required />
-      </div>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="addressLine1">Address</Label>
-        <Input id="addressLine1" name="addressLine1" placeholder="Street address" required />
-      </div>
+      <Field
+        name="email"
+        label="Email"
+        type="email"
+        errors={state.fields}
+        autoComplete="email"
+        required
+      />
+      <Field
+        name="addressLine1"
+        label="Address"
+        placeholder="Street address"
+        errors={state.fields}
+        autoComplete="address-line1"
+        hint="Required by the CRA on an official donation receipt."
+        required
+      />
       <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="city">City</Label>
-          <Input id="city" name="city" required />
-        </div>
+        <Field
+          name="city"
+          label="City"
+          errors={state.fields}
+          autoComplete="address-level2"
+          required
+        />
         <div className="flex flex-col gap-2">
           <Label htmlFor="province">Province</Label>
           <select
@@ -94,10 +108,14 @@ export function HostedDetailsForm(props: {
           </select>
         </div>
       </div>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="postalCode">Postal code</Label>
-        <Input id="postalCode" name="postalCode" placeholder="A1A 1A1" required />
-      </div>
+      <Field
+        name="postalCode"
+        label="Postal code"
+        placeholder="A1A 1A1"
+        errors={state.fields}
+        autoComplete="postal-code"
+        required
+      />
 
       <SubmitButton size="lg" className="mt-1 w-full">
         Get my receipt

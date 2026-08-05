@@ -249,15 +249,71 @@ St. Mary's has demo white-label branding set (teal `#0d9488`, logo, custom recei
 
 ## Env vars (`.env`, see `.env.example`)
 `DATABASE_URL` (app role, RLS), `ADMIN_DATABASE_URL` (superuser), `AUTH_SECRET`, `AUTH_COOKIE`,
-`NEXT_PUBLIC_APP_URL`, `RESEND_API_KEY`+`EMAIL_FROM` (email; empty = console log), `PAYMENT_PROVIDER=mock`,
-`CRON_SECRET`, `CONTACT_TO`, optional `UPSTASH_REDIS_REST_URL`/`_TOKEN` (distributed rate limit),
-and (not yet set) `ANTHROPIC_API_KEY` for full AI chat.
+`NEXT_PUBLIC_APP_URL`, `EMAIL_FROM`, `PAYMENT_PROVIDER`, `CRON_SECRET`, `CONTACT_TO`,
+optional `UPSTASH_REDIS_REST_URL`/`_TOKEN` (distributed rate limit — the in-memory fallback is a
+**no-op on serverless**, so set these in prod), `SENTRY_DSN`, `KINDPATH_GST_NUMBER` (printed on
+subscription invoices), and (not yet set) `ANTHROPIC_API_KEY` for full AI chat.
+
+**Hard production requirements** (`src/lib/env.ts` throws on first real request if missing):
+`ADMIN_DATABASE_URL`, `NEXT_PUBLIC_APP_URL`, `CRON_SECRET`, `RESEND_API_KEY`, `CREDENTIALS_KEY`.
+`RESEND_API_KEY` is required because `sendEmail` otherwise falls back to console logging and every
+receipt would be recorded as delivered while nothing sends. `CREDENTIALS_KEY` is required because it
+otherwise falls back to `AUTH_SECRET`, which would couple credential decryption to session signing —
+rotating `AUTH_SECRET` would destroy every org's stored gateway credentials and invalidate every
+receipt link already emailed to a donor.
 
 ## Deploy (see docs/10_DEPLOYMENT.md)
 Recommended: **Vercel** + **Neon Postgres (ca-central-1)** + **Resend**. Two DB roles (create
 `kindpath_app` non-superuser; run migrations as owner). `vercel.json` has the daily billing cron.
 `scripts/create-admin.ts` creates a real prod super-admin (don't seed demo data in prod). `build` runs
 `prisma generate && next build`; `postinstall` runs `prisma generate`.
+
+## Production hardening pass (2026-08-06) — what changed and why
+
+Executed against the approved plan in `~/.claude/plans/peaceful-wondering-snowflake.md`.
+
+**Money safety**
+- **Notification outbox** (`src/lib/notifications.ts`). `queue*Email(tx, …)` writes a `notifications`
+  row inside the transaction; `flushEmails([...])` delivers AFTER commit. Sending inside `withTenant`
+  held a lock on `receipt_sequences` across an HTTPS call to Resend under a 5s timeout, so a slow mail
+  provider could roll back a gift that had already been charged. **Never call `sendEmail` inside a
+  transaction.**
+- **`Donation.chargeKey`** — unique, set ONLY on succeeded donations (nulls don't collide in Postgres).
+  This is the real double-submit guard; the in-transaction "already exists?" read is only a fast path.
+  On P2002 the writer returns the winning request's receipt (`src/lib/donations.ts`).
+- `recordDonationSafely` never shows a charged donor a generic error page.
+- Billing cron: per-plan try/catch, and batching that tracks handled ids rather than using offsets
+  (settled plans leave the result set, so `skip` would silently skip rows).
+
+**Auth** — sessions carry `v` (token version) re-checked on EVERY request via
+`src/lib/auth/revocation.ts` → `getSessionStatus()`. Disabling a user, suspending an org, demoting a
+role, or resetting a password now takes effect immediately instead of after 7 days. Shared
+`ChangeMe123!` is gone: accounts are created with an unusable random hash + `mustChangePassword`, and
+the invitee sets their own password via a single-use SHA-256-hashed expiring link
+(`src/lib/auth/invite.ts`, `password-reset.ts`). Per-account lockout in `src/lib/auth/lockout.ts`.
+
+**Revenue** (`src/lib/subscriptions.ts`, `src/lib/tax.ts`) — trial expiry, `past_due` with a 14-day
+grace countdown, province-based GST/HST, sequential `KP-<year>-<n>` invoice numbers, invoice PDF,
+`/dashboard/billing`, `/admin/revenue`. **Deliberate policy: a lapsed subscription locks the dashboard
+but never blocks donors and never deletes records.** `assertBillingActive` gates only actions that
+create NEW obligations (manual donation entry, annual receipt generation).
+
+**CRA** — `generateAnnualReceipts` excludes gifts that already carry a receipt (`receipt: { is: null }`)
+and honours `receiptMode`; voided/replaced receipts render VOID on the PDF; `reissueReceipt` uses
+`Receipt.replacesSerial`; issue/void/export are audit-logged via `src/lib/audit.ts`.
+
+**CI** (`.github/workflows/ci.yml`) — typecheck, tests, a build that must succeed WITHOUT runtime
+secrets, and a real cross-tenant RLS test against a live Postgres. `REQUIRE_TENANT_DATA=1` makes
+`verify-rls.ts` fail rather than pass vacuously on an empty database.
+
+**UI honesty** — removed the fake card forms (number/expiry/CVC pre-filled `4242…` plus Apple/Google
+Pay buttons) that collected and charged nothing on public org-branded pages. Saved payment methods now
+show the gateway's actual card or nothing, never a hardcoded "Visa •••• 4242".
+
+**Shared primitives added** — `FormAlert` (role="alert"), `ConfirmDialog`/`ConfirmButton` (replaces
+`window.confirm`/`prompt`/`alert`, which some webviews suppress entirely so destructive actions
+silently no-op'd), `Field` (aria-invalid + aria-describedby), `Skeleton`/`PageSkeleton`,
+`SectionError`, `ListSearch`/`Pagination`, `src/lib/validation.ts` (all field errors, not `issues[0]`).
 
 ## NOT built yet / honest caveats
 - **Real payments**: `StripeAdapter` is built + unit-tested but needs `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET`
@@ -266,13 +322,17 @@ Recommended: **Vercel** + **Neon Postgres (ca-central-1)** + **Resend**. Two DB 
   sandbox/prod keys + webhook secret. `/give`'s "POS (We Vend) mode" is a labelled link, not yet wired.
 - **AI chat** needs `ANTHROPIC_API_KEY` (falls back to deterministic basic-mode without it).
 - **Email** needs a Resend key + verified domain to actually send (logs to console in dev).
-- Two server-action mutations (`sendCampaign`, `generateAnnualReceipts`) verified at query/UI layer +
-  typecheck; not click-executed end-to-end due to login rate-limit — click-test in the UI.
+- **`sendCampaign` still sends in-request** (now queued-first and resumable, but a large send can still
+  exceed the Vercel function limit). Move to a queue/cron before a big list.
+- Donor self-service data export + anonymization (PIPEDA/Law 25) not built; org-level CSV export exists.
+- Pagination added to donors + recurring only. `listReceipts`, `segments.ts`, `queries/admin.ts` and the
+  CSV exporter still load everything.
 - Not done: nonce-CSP (incompatible w/ static pages), object storage for logos (upload works via a
   data-URI fallback; wire S3/R2 for large assets + email-safe hosted URLs), recurring event series,
   pledge→payment auto-linking, donor tags/saved segments,
-  GST/HST subscription-invoice PDFs, real SMS (Twilio/MSG91), lawyer review of receipt template + per-org
-  BN/RR before issuing real official receipts.
+  real SMS (Twilio/MSG91), lawyer review of receipt template + per-org
+  BN/RR before issuing real official receipts, Neon PITR + a **tested** restore.
+- `/privacy` and `/terms` exist but are explicitly marked **drafts pending counsel** on the page itself.
 
 ## Tier 0 security backtest (2026-07-08, PASSED)
 Adversarial pass over everything built in Tier 0. Results:
@@ -292,6 +352,19 @@ Adversarial pass over everything built in Tier 0. Results:
   creds AES-GCM sealed (0 plaintext rows in DB), absent from audit log / describe / server logs.
 - **Headers**: CSP + X-Frame-Options DENY + X-Content-Type-Options + Referrer-Policy + Permissions-Policy
   + HSTS all present. Mock-gateway page 404s unless `mock-hosted`. 85 tests, tsc clean.
+
+## GOTCHAs that cost time (read before debugging)
+- **`docker exec` needs `-i`** for a heredoc, or the SQL silently goes nowhere and you'll chase a
+  phantom "RLS didn't apply".
+- **`prisma db execute` exits 1 on failure**, but `cmd | tail` reports *tail's* status — use
+  `PIPESTATUS` or don't pipe when you're checking the exit code.
+- **`prisma migrate diff --shadow-database-url`** leaves the shadow DB non-empty; use a fresh database
+  name each time or `migrate deploy` will hit P3005.
+- **The Claude preview browser strips cookies from non-GET requests**, so server actions can't be
+  click-tested. Replay them with curl: GET the page, extract the `id` from the
+  `$ACTION_1:0` hidden input and the `$ACTION_KEY` value, then POST them back as multipart fields
+  along with the form fields. Verified working for login.
+- **Restart the dev server after `prisma migrate`** — a stale Prisma client silently skips new columns.
 
 ## Compliance to remember
 CRA official-receipt mandatory fields (all implemented in the PDF), split-receipting, receipt

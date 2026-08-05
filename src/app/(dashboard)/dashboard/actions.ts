@@ -14,6 +14,7 @@ import { revokeSessions } from "@/lib/auth/revocation";
 import { loadConsentedDonors, filterSegment } from "@/lib/segments";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { audit } from "@/lib/audit";
+import { assertBillingActive } from "@/lib/access";
 
 export type ActionState = { error?: string; ok?: boolean };
 
@@ -301,6 +302,11 @@ export async function logManualDonation(
   formData: FormData
 ): Promise<ActionState> {
   const session = await requireOrgUser();
+  // Issuing a NEW official receipt is an obligation, so it requires a live
+  // subscription. Reading, exporting and re-downloading existing receipts
+  // deliberately stay available — a lapsed invoice must never cut a charity off
+  // from records it is legally required to keep. Donors are never blocked.
+  await assertBillingActive(session.orgId);
   const parsed = manualSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0]?.message };
   const d = parsed.data;
@@ -748,6 +754,7 @@ const ANNUAL_BATCH_SIZE = 25;
  */
 export async function generateAnnualReceipts(year: number): Promise<AnnualState> {
   const session = await requireOrgUser();
+  await assertBillingActive(session.orgId);
   const now = new Date();
   if (year < 2000 || year > now.getFullYear()) return { error: "Pick a valid tax year." };
 

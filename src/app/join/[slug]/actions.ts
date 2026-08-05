@@ -8,10 +8,11 @@ import { nextReceiptSerial, formatAddress } from "@/lib/receipts";
 import { queueReceiptEmail, flushEmails } from "@/lib/notifications";
 import { verifyChargeToken } from "@/lib/charge-token";
 import { signReceiptToken } from "@/lib/receipt-links";
+import { formErrors, type FieldErrors } from "@/lib/validation";
 
 const FREQ_DAYS: Record<string, number> = { weekly: 7, monthly: 30, quarterly: 90, annual: 365 };
 
-export type MembershipState = { error?: string };
+export type MembershipState = { error?: string; fields?: FieldErrors };
 
 const schema = z.object({
   slug: z.string().min(1),
@@ -32,7 +33,10 @@ export async function completeMembership(
   formData: FormData
 ): Promise<MembershipState> {
   const parsed = schema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Please check your details." };
+  if (!parsed.success) {
+    const { fields, message } = formErrors(parsed.error);
+    return { error: message, fields };
+  }
   const d = parsed.data;
 
   const org = await adminDb.organization.findUnique({ where: { slug: d.slug } });

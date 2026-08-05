@@ -10,6 +10,7 @@ import { nextReceiptSerial, formatAddress } from "@/lib/receipts";
 import { queueReceiptEmail, flushEmails } from "@/lib/notifications";
 import { captureError } from "@/lib/observability";
 import { isDuplicateChargeError, findReceiptForCharge } from "@/lib/donations";
+import { formErrors, type FieldErrors } from "@/lib/validation";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { signChargeToken, verifyChargeToken } from "@/lib/charge-token";
 import { signReceiptToken } from "@/lib/receipt-links";
@@ -122,7 +123,7 @@ export async function beginHostedDonation(input: {
 }
 
 // ---------- step 2: capture details + issue receipt ----------
-export type CompleteState = { error?: string };
+export type CompleteState = { error?: string; fields?: FieldErrors };
 
 const completeSchema = z.object({
   slug: z.string().min(1),
@@ -357,7 +358,10 @@ export async function completeDonation(
 ): Promise<CompleteState> {
   const parsed = completeSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Please check your details." };
+    // Every invalid field at once. The donor's card is already charged by this
+    // point — making them discover problems one at a time is not acceptable.
+    const { fields, message } = formErrors(parsed.error);
+    return { error: message, fields };
   }
   const result = await recordDonationSafely(parsed.data);
   if ("error" in result) return { error: result.error };
@@ -367,7 +371,7 @@ export async function completeDonation(
 }
 
 // ---------- kiosk: complete WITHOUT redirecting (shared tablet, no PII on screen) ----------
-export type KioskCompleteState = { ok?: boolean; error?: string };
+export type KioskCompleteState = { ok?: boolean; error?: string; fields?: FieldErrors };
 
 export async function completeKioskDonation(
   _prev: KioskCompleteState,
@@ -375,7 +379,8 @@ export async function completeKioskDonation(
 ): Promise<KioskCompleteState> {
   const parsed = completeSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Please check your details." };
+    const { fields, message } = formErrors(parsed.error);
+    return { error: message, fields };
   }
   const result = await recordDonationSafely(parsed.data);
   if ("error" in result) return { error: result.error };

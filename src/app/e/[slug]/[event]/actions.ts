@@ -8,8 +8,9 @@ import { nextReceiptSerial, formatAddress } from "@/lib/receipts";
 import { queueReceiptEmail, flushEmails } from "@/lib/notifications";
 import { verifyChargeToken } from "@/lib/charge-token";
 import { signReceiptToken } from "@/lib/receipt-links";
+import { formErrors, type FieldErrors } from "@/lib/validation";
 
-export type TicketState = { error?: string };
+export type TicketState = { error?: string; fields?: FieldErrors };
 
 const schema = z.object({
   slug: z.string().min(1),
@@ -31,7 +32,10 @@ export async function completeTicketPurchase(
   formData: FormData
 ): Promise<TicketState> {
   const parsed = schema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Please check your details." };
+  if (!parsed.success) {
+    const { fields, message } = formErrors(parsed.error);
+    return { error: message, fields };
+  }
   const d = parsed.data;
 
   const org = await adminDb.organization.findUnique({ where: { slug: d.slug } });
