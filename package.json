@@ -9,8 +9,10 @@
     "lint": "next lint",
     "postinstall": "prisma generate",
     "db:migrate": "dotenv-run() { set -a; . ./.env; set +a; }; dotenv-run; DATABASE_URL=\"$ADMIN_DATABASE_URL\" prisma migrate dev",
-    "db:deploy": "DATABASE_URL=\"$ADMIN_DATABASE_URL\" prisma migrate deploy",
-    "db:rls": "docker exec -i kindpath-pg psql -U kindpath -d kindpath -v ON_ERROR_STOP=1 < prisma/sql/rls.sql",
+    "db:deploy": "npm run db:migrate:deploy && npm run db:rls && npm run db:verify-rls",
+    "db:migrate:deploy": "DATABASE_URL=\"$ADMIN_DATABASE_URL\" prisma migrate deploy",
+    "db:rls": "DATABASE_URL=\"$ADMIN_DATABASE_URL\" prisma db execute --file prisma/sql/rls.sql --schema prisma/schema.prisma",
+    "db:verify-rls": "tsx scripts/verify-rls.ts",
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
     "test": "vitest run"

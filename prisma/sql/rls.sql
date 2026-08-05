@@ -1,5 +1,6 @@
 -- Row-Level Security for KindPath multi-tenancy.
--- Applied as superuser AFTER `prisma migrate`. Re-runnable (idempotent).
+-- Applied after `prisma migrate`. Re-runnable (idempotent). Run via `npm run db:rls`,
+-- which `db:deploy` invokes automatically so policies can never lag behind a migration.
 --
 -- Runtime model:
 --   * The app connects as kindpath_app (non-superuser, subject to RLS).
@@ -7,42 +8,33 @@
 --       SET LOCAL app.current_org_id = '<org uuid>'
 --     (see src/lib/tenant.ts -> withTenant). Without it, tenant rows are invisible.
 --   * Auth lookups and platform-admin/global ops use the superuser adminDb client.
-
--- ---- grants: tenant tables (full DML for the app role) ----
-GRANT SELECT, INSERT, UPDATE, DELETE ON
-  organizations, org_users, subscriptions, subscription_invoices,
-  donors, donor_payment_methods, funds, recurring_plans, donations,
-  receipts, receipt_sequences, notifications, audit_log, campaigns,
-  membership_plans, events, ticket_types, pledges,
-  volunteers, volunteer_passes
-TO kindpath_app;
-
--- ---- grants: global tables (managed at app layer, no RLS) ----
-GRANT SELECT, INSERT, UPDATE, DELETE ON platform_admins, webhook_events TO kindpath_app;
-
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO kindpath_app;
+--
+-- IMPORTANT: the tenant table list is DERIVED FROM THE CATALOG, not hardcoded.
+-- Any table with an `org_id` column is a tenant table and is protected automatically,
+-- so a future migration cannot ship a new table without isolation. `organizations`
+-- is special-cased (it keys on `id`). Tables without `org_id` (platform_admins,
+-- webhook_events, _prisma_migrations) are global by design and left unprotected.
+-- `scripts/verify-rls.ts` asserts this invariant and fails CI if it is ever violated.
 
 -- ---- helper: current org from session GUC (NULL when unset => deny) ----
 -- Prisma stores String ids as text, so this returns text to match id/org_id columns.
-DROP FUNCTION IF EXISTS current_org_id() CASCADE;
 CREATE OR REPLACE FUNCTION current_org_id() RETURNS text
 LANGUAGE sql STABLE AS $$
   SELECT NULLIF(current_setting('app.current_org_id', true), '')
 $$;
 
--- ---- enable + force RLS and define policies per tenant table ----
 DO $$
 DECLARE
   t text;
-  tenant_tables text[] := ARRAY[
-    'org_users','subscriptions','subscription_invoices','donors',
-    'donor_payment_methods','funds','recurring_plans','donations',
-    'receipts','receipt_sequences','notifications','audit_log','campaigns',
-    'membership_plans','events','ticket_types','pledges',
-    'volunteers','volunteer_passes'
-  ];
+  granted int := 0;
+  protected int := 0;
 BEGIN
-  -- organizations keys on id (not org_id)
+  -- ---- global tables: app-layer managed, no RLS (auth lookups happen pre-tenant) ----
+  EXECUTE 'GRANT SELECT, INSERT, UPDATE, DELETE ON platform_admins, webhook_events TO kindpath_app';
+  EXECUTE 'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO kindpath_app';
+
+  -- ---- organizations: tenant root, keys on id (not org_id) ----
+  EXECUTE 'GRANT SELECT, INSERT, UPDATE, DELETE ON organizations TO kindpath_app';
   EXECUTE 'ALTER TABLE organizations ENABLE ROW LEVEL SECURITY';
   EXECUTE 'ALTER TABLE organizations FORCE ROW LEVEL SECURITY';
   EXECUTE 'DROP POLICY IF EXISTS org_isolation ON organizations';
@@ -50,12 +42,28 @@ BEGIN
              USING (id = current_org_id())
              WITH CHECK (id = current_org_id())';
 
-  FOREACH t IN ARRAY tenant_tables LOOP
+  -- ---- every table carrying org_id is a tenant table, discovered dynamically ----
+  FOR t IN
+    SELECT c.relname
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_attribute a ON a.attrelid = c.oid
+    WHERE n.nspname = 'public'
+      AND c.relkind = 'r'
+      AND a.attname = 'org_id'
+      AND a.attnum > 0
+      AND NOT a.attisdropped
+    ORDER BY c.relname
+  LOOP
+    EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO kindpath_app', t);
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
     EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t);
     EXECUTE format('DROP POLICY IF EXISTS tenant_isolation ON %I', t);
     EXECUTE format('CREATE POLICY tenant_isolation ON %I
                       USING (org_id = current_org_id())
                       WITH CHECK (org_id = current_org_id())', t);
+    protected := protected + 1;
   END LOOP;
+
+  RAISE NOTICE 'RLS applied: organizations + % tenant table(s) discovered via org_id', protected;
 END $$;

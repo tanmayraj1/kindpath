@@ -39,6 +39,16 @@ orgs issue **payment confirmations**. Split-receipting: `eligibleAmount = amount
 - **`withTenant(orgId, cb)`** (`src/lib/tenant.ts`) runs a transaction that `SET LOCAL app.current_org_id`
   → Postgres RLS scopes every tenant query. Policies in `prisma/sql/rls.sql` (idempotent; re-run with
   `npm run db:rls`). Verified: app role sees 0 rows without context, only its org's rows with it.
+- **RLS is CATALOG-DRIVEN and enforced in the pipeline** (2026-07-14). `rls.sql` no longer hardcodes a
+  table list — it discovers every table with an `org_id` column from `pg_class`/`pg_attribute`, so a new
+  tenant table CANNOT ship without isolation. `organizations` is special-cased (keys on `id`);
+  `platform_admins`/`webhook_events`/`_prisma_migrations` are global by design.
+  **`npm run db:deploy` = migrate deploy → db:rls → db:verify-rls**, so policies can never lag a migration.
+  `scripts/verify-rls.ts` asserts the invariant (catalog check + live "app role sees 0 rows" probe) and
+  **exits 1** on any violation — wire it into CI. PRODUCTION AUDITED + VERIFIED on Neon: all 20 tenant
+  tables FORCE RLS + policy, zero cross-tenant visibility, admin role bypasses correctly (login safe).
+  Safety net proven by injecting an unprotected `org_id` table: verifier caught the missing policy AND a
+  real 1-row leak (exit 1), `db:rls` auto-protected it, exit 0. No hand-maintained list to forget.
 - **Auth guards** `src/lib/auth/guards.ts`: `requireOrgUser`, `requireOrgAdmin` (role=org_admin),
   `requirePlatformAdmin`, `requireDonor`. Middleware (`src/middleware.ts`) protects `/admin` `/dashboard`
   `/portal` and redirects by role.
