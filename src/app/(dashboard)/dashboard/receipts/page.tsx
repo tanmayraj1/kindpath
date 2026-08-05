@@ -98,7 +98,7 @@ export default async function ReceiptsPage() {
                           >
                             <Download className="size-4" /> PDF
                           </a>
-                          {r.status === "issued" && <VoidReceiptButton receiptId={r.id} />}
+                          <VoidReceiptButton receiptId={r.id} status={r.status} />
                         </div>
                       </Td>
                     </Tr>

@@ -5,7 +5,7 @@ import { z } from "zod";
 import { adminDb } from "@/lib/db";
 import { withTenant } from "@/lib/tenant";
 import { nextReceiptSerial, formatAddress } from "@/lib/receipts";
-import { sendReceiptEmail } from "@/lib/notifications";
+import { queueReceiptEmail, flushEmails } from "@/lib/notifications";
 import { verifyChargeToken } from "@/lib/charge-token";
 import { signReceiptToken } from "@/lib/receipt-links";
 
@@ -45,15 +45,15 @@ export async function completeMembership(
   const amount = charge.amount;
   const year = new Date().getFullYear();
 
-  const receiptId = await withTenant(org.id, async (tx) => {
+  const { receiptId, mail } = await withTenant(org.id, async (tx) => {
     const plan = await tx.membershipPlan.findFirst({ where: { id: d.planId } });
     if (!plan) throw new Error("Plan not found");
 
     const existing = await tx.donation.findFirst({
-      where: { providerChargeRef: charge.ref },
+      where: { chargeKey: charge.ref },
       include: { receipt: true },
     });
-    if (existing?.receipt) return existing.receipt.id;
+    if (existing?.receipt) return { receiptId: existing.receipt.id, mail: null };
 
     const donor = await tx.donor.upsert({
       where: { orgId_email: { orgId: org.id, email: d.email } },
@@ -109,6 +109,7 @@ export async function completeMembership(
         eligibleAmount: amount,
         status: "succeeded",
         providerChargeRef: charge.ref,
+        chargeKey: charge.ref,
         receivedAt: new Date(),
       },
     });
@@ -134,7 +135,7 @@ export async function completeMembership(
       },
     });
 
-    await sendReceiptEmail(tx, {
+    const mail = await queueReceiptEmail(tx, {
       orgId: org.id,
       donorId: donor.id,
       donorEmail: d.email,
@@ -147,8 +148,9 @@ export async function completeMembership(
       brandColor: org.primaryColor,
       logoUrl: org.logoUrl,
     });
-    return receipt.id;
+    return { receiptId: receipt.id, mail };
   });
 
+  if (mail) await flushEmails([mail]);
   redirect(`/r/${receiptId}?t=${signReceiptToken(receiptId)}`);
 }

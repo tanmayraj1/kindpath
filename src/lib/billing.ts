@@ -1,7 +1,8 @@
 import { adminDb } from "@/lib/db";
 import { getPaymentProviderForOrg } from "@/lib/payments";
 import { nextReceiptSerial, formatAddress } from "@/lib/receipts";
-import { sendReceiptEmail, sendBillingFailureEmail } from "@/lib/notifications";
+import { queueReceiptEmail, queueBillingFailureEmail, flushEmails, type QueuedEmail } from "@/lib/notifications";
+import { captureError, log } from "@/lib/observability";
 
 const RETRY_DAYS = [3, 5, 7]; // backoff schedule; suspend after the last
 export const MAX_RETRIES = RETRY_DAYS.length;
@@ -20,10 +21,12 @@ function addDays(d: Date, n: number) {
 // A due plan with the relations settleDuePlan needs (donor, org, paymentMethod).
 type DuePlan = Awaited<ReturnType<typeof loadDuePlans>>[number];
 
-function loadDuePlans(where: object) {
+function loadDuePlans(where: object, page: { skip?: number; take?: number } = {}) {
   return adminDb.recurringPlan.findMany({
     where,
     include: { donor: true, org: true, paymentMethod: true, fund: true },
+    orderBy: { id: "asc" },
+    ...page,
   });
 }
 
@@ -54,7 +57,7 @@ export async function settleDuePlan(
     idempotencyKey: opts.idempotencyKey ?? `${plan.id}:${plan.nextBillingDate?.toISOString() ?? ""}`,
   });
 
-  return adminDb.$transaction(async (tx) => {
+  const { outcome, mail } = await adminDb.$transaction(async (tx) => {
     if (charge.success) {
       const registered = plan.org.charityStatus === "registered";
       const year = now.getFullYear();
@@ -72,6 +75,7 @@ export async function settleDuePlan(
           status: "succeeded",
           paymentMethodId: plan.paymentMethodId,
           providerChargeRef: charge.providerChargeRef,
+          chargeKey: charge.providerChargeRef || null,
           receivedAt: now,
         },
       });
@@ -98,7 +102,7 @@ export async function settleDuePlan(
         },
       });
 
-      await sendReceiptEmail(tx, {
+      const mail = await queueReceiptEmail(tx, {
         orgId: plan.orgId,
         donorId: plan.donorId,
         donorEmail: plan.donor.email,
@@ -120,7 +124,7 @@ export async function settleDuePlan(
           nextBillingDate: addDays(now, FREQ_DAYS[plan.frequency] ?? 30),
         },
       });
-      return "charged";
+      return { outcome: "charged" as const, mail };
     }
 
     const attempt = plan.retryCount + 1;
@@ -135,7 +139,7 @@ export async function settleDuePlan(
           : addDays(now, RETRY_DAYS[Math.min(attempt - 1, RETRY_DAYS.length - 1)]),
       },
     });
-    await sendBillingFailureEmail(tx, {
+    const mail = await queueBillingFailureEmail(tx, {
       orgId: plan.orgId,
       donorId: plan.donorId,
       donorEmail: plan.donor.email,
@@ -164,8 +168,13 @@ export async function settleDuePlan(
         receivedAt: now,
       },
     });
-    return suspend ? "suspended" : "failed";
+    return { outcome: (suspend ? "suspended" : "failed") as SettleOutcome, mail };
   });
+
+  // Sent only after the transaction commits — a mail outage must never roll back
+  // a charge that already succeeded at the processor.
+  await flushEmails([mail]);
+  return outcome;
 }
 
 export type BillingSummary = {
@@ -174,29 +183,64 @@ export type BillingSummary = {
   failed: number;
   suspended: number;
   receiptsIssued: number;
+  /** Plans that threw (gateway down, bad data). Reported, not swallowed. */
+  errored: number;
 };
+
+/** Plans handled per batch. Bounds memory and keeps each cron slice short. */
+const BILLING_BATCH_SIZE = 50;
 
 /**
  * Process all recurring plans due for billing. Idempotent across runs because a
  * successful charge advances nextBillingDate past `now`. Safe to call from a cron.
+ *
+ * Every plan is isolated: one plan throwing (gateway timeout, corrupt payment
+ * method) used to abort the whole run and silently leave every later org unbilled.
+ * Now it is counted, reported, and the run continues. Plans are loaded in batches
+ * so a large tenant doesn't pull thousands of rows with relations into memory.
  */
 export async function runBilling(now = new Date()): Promise<BillingSummary> {
-  const summary: BillingSummary = { due: 0, charged: 0, failed: 0, suspended: 0, receiptsIssued: 0 };
+  const summary: BillingSummary = {
+    due: 0,
+    charged: 0,
+    failed: 0,
+    suspended: 0,
+    receiptsIssued: 0,
+    errored: 0,
+  };
 
-  const duePlans = await loadDuePlans({ status: "active", nextBillingDate: { lte: now } });
-  summary.due = duePlans.length;
+  const where = { status: "active" as const, nextBillingDate: { lte: now } };
+  summary.due = await adminDb.recurringPlan.count({ where });
 
-  for (const plan of duePlans) {
-    const outcome = await settleDuePlan(plan, now);
-    if (outcome === "charged") {
-      summary.charged += 1;
-      summary.receiptsIssued += 1;
-    } else {
-      summary.failed += 1;
-      if (outcome === "suspended") summary.suspended += 1;
+  // Settling a plan removes it from `where` (nextBillingDate advances, or the
+  // plan suspends), so offset pagination would skip rows as the set shrinks.
+  // Instead always take the head of the set and track ids we've already handled —
+  // that also stops a plan that *threw* (and so stayed due) from looping forever.
+  const handled = new Set<string>();
+  for (;;) {
+    const batch = await loadDuePlans(where, { take: BILLING_BATCH_SIZE });
+    const pending = batch.filter((p) => !handled.has(p.id));
+    if (pending.length === 0) break;
+
+    for (const plan of pending) {
+      handled.add(plan.id);
+      try {
+        const outcome = await settleDuePlan(plan, now);
+        if (outcome === "charged") {
+          summary.charged += 1;
+          summary.receiptsIssued += 1;
+        } else {
+          summary.failed += 1;
+          if (outcome === "suspended") summary.suspended += 1;
+        }
+      } catch (e) {
+        summary.errored += 1;
+        captureError(e, { source: "billing.runBilling", planId: plan.id, orgId: plan.orgId });
+      }
     }
   }
 
+  log("info", "billing run complete", { ...summary });
   return summary;
 }
 

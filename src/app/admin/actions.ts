@@ -4,14 +4,19 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { adminDb } from "@/lib/db";
-import { hashPassword } from "@/lib/auth/password";
 import { createSession } from "@/lib/auth/session";
 import { requirePlatformAdmin } from "@/lib/auth/guards";
+import { unusablePasswordHash, sendInvite } from "@/lib/auth/invite";
+import { revokeSessions, revokeOrgSessions } from "@/lib/auth/revocation";
 import { planPrice, isPlanKey } from "@/lib/plans";
 
-export type AdminState = { error?: string; ok?: boolean; tempPassword?: string };
-
-const TEMP_PASSWORD = "ChangeMe123!";
+export type AdminState = {
+  error?: string;
+  ok?: boolean;
+  /** Single-use setup link, surfaced so an admin can relay it if email fails. */
+  inviteUrl?: string;
+  emailed?: boolean;
+};
 
 function slugify(input: string) {
   return input.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 40);
@@ -45,15 +50,25 @@ export async function createOrganization(
   }
 
   const price = isPlanKey(d.plan) ? planPrice(d.plan, "monthly") : 29;
-  const passwordHash = await hashPassword(TEMP_PASSWORD);
+  // The first admin never gets a password from us — they set their own via a
+  // single-use invitation link. Nothing shared, nothing to leak, nothing to reuse.
+  const passwordHash = await unusablePasswordHash();
 
-  await adminDb.organization.create({
+  const org = await adminDb.organization.create({
     data: {
       name: d.name,
       slug,
       charityStatus: d.charityStatus,
       receiptLocality: "Canada",
-      users: { create: { email: d.adminEmail, name: d.adminName, role: "org_admin", passwordHash } },
+      users: {
+        create: {
+          email: d.adminEmail,
+          name: d.adminName,
+          role: "org_admin",
+          passwordHash,
+          mustChangePassword: true,
+        },
+      },
       subscription: {
         create: {
           plan: d.plan,
@@ -65,17 +80,31 @@ export async function createOrganization(
       },
       funds: { create: [{ name: "General Fund", code: "GEN" }] },
     },
+    include: { users: true },
+  });
+
+  const invite = await sendInvite({
+    principal: "org",
+    principalId: org.users[0].id,
+    orgId: org.id,
+    email: d.adminEmail,
+    name: d.adminName,
+    orgName: org.name,
+    purpose: "invite",
   });
 
   revalidatePath("/admin/organizations");
   revalidatePath("/admin");
-  return { ok: true, tempPassword: TEMP_PASSWORD };
+  return { ok: true, inviteUrl: invite.url, emailed: invite.emailed };
 }
 
 // ---- suspend / activate / archive ----
 export async function setOrgStatus(orgId: string, status: "active" | "suspended" | "archived") {
   const admin = await requirePlatformAdmin();
   await adminDb.organization.update({ where: { id: orgId }, data: { status } });
+  // Suspension has to bite immediately — sessions live for 7 days otherwise, and
+  // they carry full access to this tenant's donor PII.
+  if (status !== "active") await revokeOrgSessions(orgId);
   await adminDb.auditLog.create({
     data: {
       orgId,
@@ -165,6 +194,7 @@ export async function revokeAccess(orgId: string) {
   const admin = await requirePlatformAdmin();
   await adminDb.organization.update({ where: { id: orgId }, data: { status: "suspended" } });
   await adminDb.subscription.updateMany({ where: { orgId }, data: { status: "cancelled" } });
+  await revokeOrgSessions(orgId);
   await audit(admin.sub, orgId, "access.revoke", "organization", orgId);
   revalidatePath(`/admin/organizations/${orgId}`);
   revalidatePath("/admin/organizations");
@@ -240,13 +270,35 @@ export async function updateOrgDetailsAsAdmin(
 // ---- reset an org admin's password ----
 export async function resetOrgUserPassword(userId: string): Promise<AdminState> {
   const admin = await requirePlatformAdmin();
-  const user = await adminDb.orgUser.findUnique({ where: { id: userId } });
+  const user = await adminDb.orgUser.findUnique({ where: { id: userId }, include: { org: true } });
   if (!user) return { error: "User not found." };
-  const passwordHash = await hashPassword(TEMP_PASSWORD);
-  await adminDb.orgUser.update({ where: { id: userId }, data: { passwordHash } });
+
+  // Lock the account first, then let them prove ownership of their inbox.
+  await adminDb.orgUser.update({
+    where: { id: userId },
+    data: {
+      passwordHash: await unusablePasswordHash(),
+      mustChangePassword: true,
+      failedLoginCount: 0,
+      lockedUntil: null,
+    },
+  });
+  await revokeSessions("org", userId);
+
+  const invite = await sendInvite({
+    principal: "org",
+    principalId: userId,
+    orgId: user.orgId,
+    email: user.email,
+    name: user.name,
+    orgName: user.org.name,
+    brandColor: user.org.primaryColor,
+    logoUrl: user.org.logoUrl,
+    purpose: "reset",
+  });
   await audit(admin.sub, user.orgId, "user.password_reset", "org_user", userId);
   revalidatePath(`/admin/organizations/${user.orgId}/users`);
-  return { ok: true, tempPassword: TEMP_PASSWORD };
+  return { ok: true, inviteUrl: invite.url, emailed: invite.emailed };
 }
 
 // ---- impersonate an org admin (support) ----
@@ -281,13 +333,24 @@ export async function impersonateOrg(orgId: string) {
 }
 
 // ---- per-org gateway (WeVend) merchant credentials, encrypted at rest ----
-const posCredsSchema = z.object({
-  orgId: z.string().min(1),
-  mid: z.string().min(3, "Merchant ID is required").max(40),
-  email: z.string().email("Enter the merchant email").max(254),
-  password: z.string().min(8, "Merchant password must be at least 8 characters").max(200),
-  termId: z.string().min(1, "Terminal ID is required").max(20),
-});
+const posCredsSchema = z
+  .object({
+    orgId: z.string().min(1),
+    mid: z.string().min(3, "Merchant ID is required").max(40),
+    // WeVend has two auth shapes; exactly one identifier is required.
+    email: z.string().max(254).optional().or(z.literal("")),
+    wvNumber: z.string().max(60).optional().or(z.literal("")),
+    password: z.string().min(8, "Merchant password must be at least 8 characters").max(200),
+    termId: z.string().min(1, "Terminal ID is required").max(20),
+  })
+  .refine((d) => !!d.email || !!d.wvNumber, {
+    message: "Enter either a merchant email or an organization (WV) number",
+    path: ["email"],
+  })
+  .refine((d) => !d.email || z.string().email().safeParse(d.email).success, {
+    message: "Enter a valid merchant email",
+    path: ["email"],
+  });
 
 export async function savePosCredentials(
   _prev: AdminState,
@@ -303,7 +366,8 @@ export async function savePosCredentials(
   await saveOrgGatewayCredentials(d.orgId, {
     provider: "wevend",
     mid: d.mid,
-    email: d.email,
+    email: d.email || undefined,
+    wvNumber: d.wvNumber || undefined,
     password: d.password,
     termId: d.termId,
   });

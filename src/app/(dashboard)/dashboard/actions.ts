@@ -6,19 +6,25 @@ import { z } from "zod";
 import { requireOrgUser, requireOrgAdmin } from "@/lib/auth/guards";
 import { withTenant } from "@/lib/tenant";
 import { adminDb } from "@/lib/db";
-import { hashPassword } from "@/lib/auth/password";
 import { nextReceiptSerial, formatAddress } from "@/lib/receipts";
-import { sendReceiptEmail } from "@/lib/notifications";
-import { sendEmail, emailLayout, escapeHtml } from "@/lib/email";
+import { queueReceiptEmail, flushEmails } from "@/lib/notifications";
+import { emailLayout, escapeHtml } from "@/lib/email";
+import { unusablePasswordHash, sendInvite } from "@/lib/auth/invite";
+import { revokeSessions } from "@/lib/auth/revocation";
 import { loadConsentedDonors, filterSegment } from "@/lib/segments";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { audit } from "@/lib/audit";
 
 export type ActionState = { error?: string; ok?: boolean };
 
-const TEAM_TEMP_PASSWORD = "ChangeMe123!";
-
 // ---------------- team / staff management (org_admin only) ----------------
-export type TeamState = { error?: string; ok?: boolean; tempPassword?: string };
+export type TeamState = {
+  error?: string;
+  ok?: boolean;
+  /** Single-use setup link, surfaced when email delivery is unavailable. */
+  inviteUrl?: string;
+  emailed?: boolean;
+};
 
 const inviteSchema = z.object({
   name: z.string().min(2, "Name is required").max(120),
@@ -36,45 +42,148 @@ export async function inviteTeamMember(_prev: TeamState, formData: FormData): Pr
   if (await adminDb.orgUser.findFirst({ where: { email: d.email } })) {
     return { error: "A user with that email already exists." };
   }
-  const passwordHash = await hashPassword(TEAM_TEMP_PASSWORD);
-  await withTenant(session.orgId, (tx) =>
+  // No shared temporary password: the account is unusable until they follow
+  // their own single-use invitation link.
+  const passwordHash = await unusablePasswordHash();
+  const created = await withTenant(session.orgId, (tx) =>
     tx.orgUser.create({
-      data: { orgId: session.orgId, name: d.name, email: d.email, role: d.role, passwordHash },
+      data: {
+        orgId: session.orgId,
+        name: d.name,
+        email: d.email,
+        role: d.role,
+        passwordHash,
+        mustChangePassword: true,
+      },
     })
   );
+
+  const org = await adminDb.organization.findUnique({
+    where: { id: session.orgId },
+    select: { name: true, primaryColor: true, logoUrl: true },
+  });
+  const invite = await sendInvite({
+    principal: "org",
+    principalId: created.id,
+    orgId: session.orgId,
+    email: d.email,
+    name: d.name,
+    orgName: org?.name,
+    brandColor: org?.primaryColor,
+    logoUrl: org?.logoUrl,
+    purpose: "invite",
+  });
+  await audit({
+    actor: { type: "org_user", id: session.sub },
+    orgId: session.orgId,
+    action: `team.invited.${d.role}`,
+    entityType: "org_user",
+    entityId: created.id,
+  });
+
   revalidatePath("/dashboard/team");
-  return { ok: true, tempPassword: TEAM_TEMP_PASSWORD };
+  return { ok: true, inviteUrl: invite.url, emailed: invite.emailed };
 }
 
-export async function setTeamMemberRole(userId: string, role: "org_admin" | "signatory" | "staff") {
+export async function setTeamMemberRole(
+  userId: string,
+  role: "org_admin" | "signatory" | "staff"
+): Promise<TeamState> {
   const session = await requireOrgAdmin();
-  if (userId === session.sub) return; // can't change your own role
-  await withTenant(session.orgId, async (tx) => {
+  if (userId === session.sub) return { error: "You can't change your own role." };
+  const updated = await withTenant(session.orgId, async (tx) => {
     const u = await tx.orgUser.findFirst({ where: { id: userId } });
-    if (u) await tx.orgUser.update({ where: { id: userId }, data: { role } });
+    if (!u) return false;
+    await tx.orgUser.update({ where: { id: userId }, data: { role } });
+    return true;
+  });
+  // Silence here used to be indistinguishable from success in the UI.
+  if (!updated) return { error: "That team member no longer exists." };
+
+  // Role is baked into the session token — force a fresh one so a demoted admin
+  // doesn't keep admin routes until their 7-day session expires.
+  await revokeSessions("org", userId);
+  await audit({
+    actor: { type: "org_user", id: session.sub },
+    orgId: session.orgId,
+    action: `team.role.${role}`,
+    entityType: "org_user",
+    entityId: userId,
   });
   revalidatePath("/dashboard/team");
+  return { ok: true };
 }
 
-export async function setTeamMemberStatus(userId: string, status: "active" | "disabled") {
+export async function setTeamMemberStatus(
+  userId: string,
+  status: "active" | "disabled"
+): Promise<TeamState> {
   const session = await requireOrgAdmin();
-  if (userId === session.sub) return; // can't lock yourself out
-  await withTenant(session.orgId, async (tx) => {
+  if (userId === session.sub) return { error: "You can't disable your own account." };
+  const updated = await withTenant(session.orgId, async (tx) => {
     const u = await tx.orgUser.findFirst({ where: { id: userId } });
-    if (u) await tx.orgUser.update({ where: { id: userId }, data: { status } });
+    if (!u) return false;
+    await tx.orgUser.update({ where: { id: userId }, data: { status } });
+    return true;
+  });
+  if (!updated) return { error: "That team member no longer exists." };
+
+  // Disabling must take effect immediately — this account can read donor PII.
+  if (status === "disabled") await revokeSessions("org", userId);
+  await audit({
+    actor: { type: "org_user", id: session.sub },
+    orgId: session.orgId,
+    action: `team.${status}`,
+    entityType: "org_user",
+    entityId: userId,
   });
   revalidatePath("/dashboard/team");
+  return { ok: true };
 }
 
 export async function resetTeamMemberPassword(userId: string): Promise<TeamState> {
   const session = await requireOrgAdmin();
-  const passwordHash = await hashPassword(TEAM_TEMP_PASSWORD);
-  await withTenant(session.orgId, async (tx) => {
-    const u = await tx.orgUser.findFirst({ where: { id: userId } });
-    if (u) await tx.orgUser.update({ where: { id: userId }, data: { passwordHash } });
+
+  const user = await withTenant(session.orgId, (tx) =>
+    tx.orgUser.findFirst({ where: { id: userId } })
+  );
+  if (!user) return { error: "That team member no longer exists." };
+
+  // Lock the account, then let them prove ownership of their inbox.
+  const passwordHash = await unusablePasswordHash();
+  await withTenant(session.orgId, (tx) =>
+    tx.orgUser.update({
+      where: { id: userId },
+      data: { passwordHash, mustChangePassword: true, failedLoginCount: 0, lockedUntil: null },
+    })
+  );
+  await revokeSessions("org", userId);
+
+  const org = await adminDb.organization.findUnique({
+    where: { id: session.orgId },
+    select: { name: true, primaryColor: true, logoUrl: true },
   });
+  const invite = await sendInvite({
+    principal: "org",
+    principalId: userId,
+    orgId: session.orgId,
+    email: user.email,
+    name: user.name,
+    orgName: org?.name,
+    brandColor: org?.primaryColor,
+    logoUrl: org?.logoUrl,
+    purpose: "reset",
+  });
+  await audit({
+    actor: { type: "org_user", id: session.sub },
+    orgId: session.orgId,
+    action: "team.password_reset",
+    entityType: "org_user",
+    entityId: userId,
+  });
+
   revalidatePath("/dashboard/team");
-  return { ok: true, tempPassword: TEAM_TEMP_PASSWORD };
+  return { ok: true, inviteUrl: invite.url, emailed: invite.emailed };
 }
 
 // ---------------- create fund ----------------
@@ -205,7 +314,7 @@ export async function logManualDonation(
   const year = new Date().getFullYear();
   const hasAddress = !!(d.addressLine1 && d.city && d.province && d.postalCode);
 
-  const receiptId = await withTenant(session.orgId, async (tx) => {
+  const { receiptId, mail } = await withTenant(session.orgId, async (tx) => {
     const org = await tx.organization.findUnique({ where: { id: session.orgId } });
     if (!org) throw new Error("Org not found");
     const registered = org.charityStatus === "registered";
@@ -250,7 +359,7 @@ export async function logManualDonation(
     });
 
     // issue a receipt only when we have an address (CRA requires it)
-    if (!hasAddress) return null;
+    if (!hasAddress) return { receiptId: null, mail: null };
 
     const serial = await nextReceiptSerial(tx, session.orgId, year, org.receiptPrefix);
     const receipt = await tx.receipt.create({
@@ -279,7 +388,7 @@ export async function logManualDonation(
         year,
       },
     });
-    await sendReceiptEmail(tx, {
+    const mail = await queueReceiptEmail(tx, {
       orgId: session.orgId,
       donorId: donor.id,
       donorEmail: d.email,
@@ -292,9 +401,10 @@ export async function logManualDonation(
       brandColor: org.primaryColor,
       logoUrl: org.logoUrl,
     });
-    return receipt.id;
+    return { receiptId: receipt.id as string | null, mail };
   });
 
+  if (mail) await flushEmails([mail]);
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/donors");
   revalidatePath("/dashboard/receipts");
@@ -561,44 +671,81 @@ export async function sendCampaign(_prev: CampaignState, formData: FormData): Pr
   const batch = recipients.slice(0, RECIPIENT_CAP);
   const portalUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/portal/profile`;
 
-  // send outside any DB transaction, then record notifications
-  const records: { donorId: string; status: "sent" | "failed" }[] = [];
-  for (const r of batch) {
-    const html = emailLayout({
-      heading: escapeHtml(subject),
-      body:
-        `${escapeHtml(message).replace(/\n/g, "<br/>")}` +
-        `<hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0"/>` +
-        `<p style="font-size:12px;color:#94a3b8">You're receiving this from ${escapeHtml(orgName)} ` +
-        `because you opted in to updates. <a href="${portalUrl}">Manage your preferences</a> to unsubscribe.</p>`,
-      brand: { orgName, brandColor, logoUrl },
-    });
-    const res = await sendEmail({ to: r.email, subject, html });
-    records.push({ donorId: r.id, status: res.ok ? "sent" : "failed" });
-  }
-
-  await withTenant(session.orgId, async (tx) => {
+  // Queue every recipient FIRST, in one write, then deliver.
+  //
+  // The old shape sent up to 200 emails sequentially inside the request. On
+  // Vercel that exceeds the function limit, so the action was killed partway —
+  // and because nothing had been recorded yet, a retry re-sent to everyone who
+  // had already received it. Queued rows make the send resumable and the
+  // outcome visible per recipient.
+  const queued = await withTenant(session.orgId, async (tx) => {
     await tx.notification.createMany({
-      data: records.map((rec) => ({
+      data: batch.map((r) => ({
         orgId: session.orgId,
-        donorId: rec.donorId,
+        donorId: r.id,
         channel: "email" as const,
         category: "marketing",
-        status: rec.status,
+        status: "queued" as const,
         caslChecked: true,
-        sentAt: rec.status === "sent" ? new Date() : null,
         payload: { subject, segment },
       })),
     });
+    return tx.notification.findMany({
+      where: { orgId: session.orgId, category: "marketing", status: "queued" },
+      select: { id: true, donorId: true },
+    });
   });
 
+  const byDonor = new Map(queued.filter((q) => q.donorId).map((q) => [q.donorId as string, q.id]));
+  const messages = batch
+    .filter((r) => byDonor.has(r.id))
+    .map((r) => ({
+      notificationId: byDonor.get(r.id) as string,
+      orgId: session.orgId,
+      to: r.email,
+      subject,
+      html: emailLayout({
+        heading: escapeHtml(subject),
+        body:
+          `${escapeHtml(message).replace(/\n/g, "<br/>")}` +
+          `<hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0"/>` +
+          `<p style="font-size:12px;color:#94a3b8">You're receiving this from ${escapeHtml(orgName)} ` +
+          `because you opted in to updates. <a href="${portalUrl}">Manage your preferences</a> to unsubscribe.</p>`,
+        brand: { orgName, brandColor, logoUrl },
+      }),
+    }));
+
+  await flushEmails(messages);
+
+  const sent = await withTenant(session.orgId, (tx) =>
+    tx.notification.count({
+      where: { id: { in: messages.map((m) => m.notificationId) }, status: "sent" },
+    })
+  );
+
   revalidatePath("/dashboard/communications");
-  return { ok: true, sent: records.filter((r) => r.status === "sent").length, capped };
+  return { ok: true, sent, capped };
 }
 
 // ---------------- annual consolidated receipts ----------------
 export type AnnualState = { error?: string; ok?: boolean; created?: number; skipped?: number };
 
+/** Donors per transaction. Keeps each write well inside the 5s statement timeout. */
+const ANNUAL_BATCH_SIZE = 25;
+
+/**
+ * Issue consolidated annual tax receipts for a year.
+ *
+ * Two CRA-critical rules are enforced here:
+ *
+ *  1. **A gift may be receipted once.** The previous version only checked for an
+ *     existing *annual* receipt, so every gift that had already been given a
+ *     per-gift official receipt was silently counted again — a donor could claim
+ *     the same donation twice, which puts the charity's registration at risk.
+ *     Gifts already carrying a receipt are now excluded from the total.
+ *  2. **Respect the org's receipting mode.** `per_gift` orgs receipt at the time
+ *     of the gift; running an annual roll-up for them would duplicate everything.
+ */
 export async function generateAnnualReceipts(year: number): Promise<AnnualState> {
   const session = await requireOrgUser();
   const now = new Date();
@@ -607,65 +754,118 @@ export async function generateAnnualReceipts(year: number): Promise<AnnualState>
   const start = new Date(year, 0, 1);
   const end = new Date(year + 1, 0, 1);
 
-  return withTenant(session.orgId, async (tx) => {
+  const prep = await withTenant(session.orgId, async (tx) => {
     const org = await tx.organization.findUnique({ where: { id: session.orgId } });
-    if (!org) return { error: "Organization not found." };
+    if (!org) return { error: "Organization not found." as const };
     if (org.charityStatus !== "registered") {
-      return { error: "Annual tax receipts are only available to registered charities." };
+      return { error: "Annual tax receipts are only available to registered charities." as const };
+    }
+    if (org.receiptMode === "per_gift") {
+      return {
+        error:
+          "This organization issues a receipt with every gift. Switch Receipt mode to " +
+          "'annual' or 'both' in Settings before running an annual roll-up.",
+      };
     }
 
-    // sum eligible gifts per donor for the year (succeeded only — excludes refunded)
+    // Succeeded gifts in the year that have NOT already been receipted.
+    // `receipt: { is: null }` is what stops the double-issue.
     const sums = await tx.donation.groupBy({
       by: ["donorId"],
       _sum: { eligibleAmount: true },
-      where: { status: "succeeded", receivedAt: { gte: start, lt: end } },
+      where: {
+        status: "succeeded",
+        receivedAt: { gte: start, lt: end },
+        receipt: { is: null },
+      },
     });
 
-    let created = 0;
-    let skipped = 0;
-    for (const row of sums) {
-      const total = Number(row._sum.eligibleAmount ?? 0);
-      if (total <= 0) continue;
+    const existing = await tx.receipt.findMany({
+      where: { year, documentType: "annual" },
+      select: { donorId: true },
+    });
 
-      const already = await tx.receipt.findFirst({
-        where: { donorId: row.donorId, year, documentType: "annual" },
-      });
-      if (already) {
-        skipped++;
-        continue;
-      }
-
-      const donor = await tx.donor.findUnique({ where: { id: row.donorId } });
-      if (!donor) continue;
-
-      const serial = await nextReceiptSerial(tx, session.orgId, year, org.receiptPrefix);
-      await tx.receipt.create({
-        data: {
-          orgId: session.orgId,
-          donorId: donor.id,
-          serialNumber: serial,
-          documentType: "annual",
-          donorNameSnapshot: [donor.firstName, donor.middleInitial, donor.lastName]
-            .filter(Boolean)
-            .join(" "),
-          donorAddressSnapshot: formatAddress(donor),
-          orgNameSnapshot: org.name,
-          orgRegNumberSnapshot: org.craRegistrationNumber,
-          amount: total,
-          advantageValue: 0,
-          eligibleAmount: total,
-          placeIssued: org.receiptLocality,
-          dateDonationReceived: new Date(year, 11, 31),
-          signatoryNameSnapshot: org.authorizedSignatory,
-          year,
-        },
-      });
-      created++;
-    }
-
-    revalidatePath("/dashboard/receipts");
-    return { ok: true, created, skipped };
+    return {
+      org,
+      sums,
+      alreadyIssued: new Set(existing.map((r) => r.donorId)),
+      minAmount: Number(org.minReceiptAmount ?? 0),
+    };
   });
+
+  if ("error" in prep) return { error: prep.error };
+  const { org, sums, alreadyIssued, minAmount } = prep;
+
+  const todo = sums
+    .map((row) => ({ donorId: row.donorId, total: Number(row._sum.eligibleAmount ?? 0) }))
+    .filter((row) => row.total > 0);
+
+  let created = 0;
+  let skipped = 0;
+
+  // One transaction per batch rather than one for the whole org: the original
+  // held a single transaction across 4 queries × N donors and timed out past
+  // roughly 50 donors, leaving the run half-done.
+  for (let i = 0; i < todo.length; i += ANNUAL_BATCH_SIZE) {
+    const batch = todo.slice(i, i + ANNUAL_BATCH_SIZE);
+    const result = await withTenant(session.orgId, async (tx) => {
+      let made = 0;
+      let passed = 0;
+      const donors = await tx.donor.findMany({ where: { id: { in: batch.map((b) => b.donorId) } } });
+      const byId = new Map(donors.map((d) => [d.id, d]));
+
+      for (const row of batch) {
+        if (alreadyIssued.has(row.donorId) || row.total < minAmount) {
+          passed++;
+          continue;
+        }
+        const donor = byId.get(row.donorId);
+        if (!donor) {
+          passed++;
+          continue;
+        }
+
+        const serial = await nextReceiptSerial(tx, session.orgId, year, org.receiptPrefix);
+        await tx.receipt.create({
+          data: {
+            orgId: session.orgId,
+            donorId: donor.id,
+            serialNumber: serial,
+            documentType: "annual",
+            donorNameSnapshot: [donor.firstName, donor.middleInitial, donor.lastName]
+              .filter(Boolean)
+              .join(" "),
+            donorAddressSnapshot: formatAddress(donor),
+            orgNameSnapshot: org.name,
+            orgRegNumberSnapshot: org.craRegistrationNumber,
+            amount: row.total,
+            advantageValue: 0,
+            eligibleAmount: row.total,
+            placeIssued: org.receiptLocality,
+            dateDonationReceived: new Date(year, 11, 31),
+            signatoryNameSnapshot: org.authorizedSignatory,
+            year,
+          },
+        });
+        made++;
+      }
+      return { made, passed };
+    });
+    created += result.made;
+    skipped += result.passed;
+  }
+
+  await audit({
+    actor: { type: "org_user", id: session.sub },
+    orgId: session.orgId,
+    action: "receipts.annual_generated",
+    entityType: "organization",
+    entityId: session.orgId,
+    after: { year, created, skipped },
+  });
+
+  revalidatePath("/dashboard/receipts");
+  return { ok: true, created, skipped };
 }
 
 // ---------------- edit a donor (org admin) ----------------
@@ -740,15 +940,114 @@ export async function orgUpdatePlanStatus(
 }
 
 // ---------------- void a receipt (e.g. on refund/correction) ----------------
-export async function voidReceipt(receiptId: string, reason: string) {
+export type ReceiptActionState = { error?: string; ok?: boolean; serial?: string };
+
+/**
+ * Void an issued receipt. The row is retained, never deleted — CRA requires a
+ * charity to keep every receipt it issued, including spoiled ones, and to be
+ * able to say who voided it and why. Both facts are audit-logged.
+ */
+export async function voidReceipt(receiptId: string, reason: string): Promise<ReceiptActionState> {
   const session = await requireOrgUser();
-  await withTenant(session.orgId, async (tx) => {
+  if (!reason?.trim()) return { error: "A reason is required to void a receipt." };
+
+  const outcome = await withTenant(session.orgId, async (tx) => {
     const receipt = await tx.receipt.findFirst({ where: { id: receiptId } });
-    if (!receipt || receipt.status === "voided") return;
+    if (!receipt) return { error: "That receipt no longer exists." };
+    if (receipt.status === "voided") return { error: "That receipt is already voided." };
     await tx.receipt.update({
       where: { id: receiptId },
-      data: { status: "voided", voidReason: reason || "Voided by admin" },
+      data: { status: "voided", voidReason: reason.trim() },
     });
+    return { ok: true, serial: receipt.serialNumber };
   });
-  revalidatePath("/dashboard/receipts");
+
+  if (outcome.ok) {
+    await audit({
+      actor: { type: "org_user", id: session.sub },
+      orgId: session.orgId,
+      action: "receipt.voided",
+      entityType: "receipt",
+      entityId: receiptId,
+      after: { serialNumber: outcome.serial, reason: reason.trim() },
+      ip: clientIp(),
+    });
+    revalidatePath("/dashboard/receipts");
+  }
+  return outcome;
+}
+
+/**
+ * Issue a corrected receipt that replaces a voided one.
+ *
+ * CRA's rule for a spoiled receipt is replace-and-reference, not edit: the new
+ * receipt gets its own serial and records the serial it supersedes, so the audit
+ * trail from the original gift to the final receipt stays unbroken. This is what
+ * `Receipt.replacesSerial` is for.
+ */
+export async function reissueReceipt(receiptId: string): Promise<ReceiptActionState> {
+  const session = await requireOrgUser();
+
+  const outcome = await withTenant(session.orgId, async (tx) => {
+    const original = await tx.receipt.findFirst({ where: { id: receiptId } });
+    if (!original) return { error: "That receipt no longer exists." };
+    if (original.status !== "voided") {
+      return { error: "Only a voided receipt can be reissued. Void it first." };
+    }
+    const existing = await tx.receipt.findFirst({
+      where: { replacesSerial: original.serialNumber },
+    });
+    if (existing) {
+      return { error: `Already replaced by receipt ${existing.serialNumber}.` };
+    }
+
+    const org = await tx.organization.findUnique({ where: { id: session.orgId } });
+    if (!org) return { error: "Organization not found." };
+
+    // Re-snapshot the donor so a corrected name/address is what appears.
+    const donor = await tx.donor.findUnique({ where: { id: original.donorId } });
+    if (!donor) return { error: "The donor for that receipt no longer exists." };
+
+    const serial = await nextReceiptSerial(tx, session.orgId, original.year, org.receiptPrefix);
+    const replacement = await tx.receipt.create({
+      data: {
+        orgId: session.orgId,
+        donationId: original.donationId,
+        donorId: original.donorId,
+        serialNumber: serial,
+        documentType: original.documentType,
+        donorNameSnapshot: [donor.firstName, donor.middleInitial, donor.lastName]
+          .filter(Boolean)
+          .join(" "),
+        donorAddressSnapshot: formatAddress(donor),
+        orgNameSnapshot: org.name,
+        orgRegNumberSnapshot: org.craRegistrationNumber,
+        amount: original.amount,
+        advantageValue: original.advantageValue,
+        eligibleAmount: original.eligibleAmount,
+        placeIssued: org.receiptLocality,
+        dateDonationReceived: original.dateDonationReceived,
+        signatoryNameSnapshot: org.authorizedSignatory,
+        replacesSerial: original.serialNumber,
+        year: original.year,
+      },
+    });
+    // Distinguish "spoiled and replaced" from a plain void.
+    await tx.receipt.update({ where: { id: original.id }, data: { status: "replaced" } });
+    return { ok: true, serial: replacement.serialNumber, id: replacement.id };
+  });
+
+  if (outcome.ok) {
+    await audit({
+      actor: { type: "org_user", id: session.sub },
+      orgId: session.orgId,
+      action: "receipt.reissued",
+      entityType: "receipt",
+      entityId: (outcome as { id: string }).id,
+      after: { serialNumber: outcome.serial, replaces: receiptId },
+      ip: clientIp(),
+    });
+    revalidatePath("/dashboard/receipts");
+  }
+  return { error: outcome.error, ok: outcome.ok, serial: outcome.serial };
 }

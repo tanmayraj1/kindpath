@@ -5,7 +5,7 @@ import { z } from "zod";
 import { adminDb } from "@/lib/db";
 import { withTenant } from "@/lib/tenant";
 import { nextReceiptSerial, formatAddress } from "@/lib/receipts";
-import { sendReceiptEmail } from "@/lib/notifications";
+import { queueReceiptEmail, flushEmails } from "@/lib/notifications";
 import { verifyChargeToken } from "@/lib/charge-token";
 import { signReceiptToken } from "@/lib/receipt-links";
 
@@ -43,13 +43,16 @@ export async function completeTicketPurchase(
   const registered = org.charityStatus === "registered";
   const year = new Date().getFullYear();
 
-  const receiptId = await withTenant(org.id, async (tx) => {
+  const { receiptId, mail } = await withTenant(org.id, async (tx) => {
     const tt = await tx.ticketType.findFirst({ where: { id: d.ticketTypeId, eventId: d.eventId } });
     const ev = await tx.event.findFirst({ where: { id: d.eventId } });
     if (!tt || !ev) throw new Error("Event/ticket not found");
 
-    const existing = await tx.donation.findFirst({ where: { providerChargeRef: charge.ref }, include: { receipt: true } });
-    if (existing?.receipt) return existing.receipt.id;
+    const existing = await tx.donation.findFirst({
+      where: { chargeKey: charge.ref },
+      include: { receipt: true },
+    });
+    if (existing?.receipt) return { receiptId: existing.receipt.id, mail: null };
 
     const advantage = Math.min(amount, Number(tt.advantageValue) * d.quantity);
     const eligible = Math.max(0, amount - advantage);
@@ -72,7 +75,7 @@ export async function completeTicketPurchase(
         orgId: org.id, donorId: donor.id, eventId: d.eventId, type: "one_time",
         amount, advantageValue: advantage,
         advantageDescription: `${d.quantity}× ${tt.name} — ${ev.title}`,
-        eligibleAmount: eligible, status: "succeeded", providerChargeRef: charge.ref, receivedAt: new Date(),
+        eligibleAmount: eligible, status: "succeeded", providerChargeRef: charge.ref, chargeKey: charge.ref, receivedAt: new Date(),
       },
     });
 
@@ -90,13 +93,14 @@ export async function completeTicketPurchase(
       },
     });
 
-    await sendReceiptEmail(tx, {
+    const mail = await queueReceiptEmail(tx, {
       orgId: org.id, donorId: donor.id, donorEmail: d.email, donorName: `${d.firstName} ${d.lastName}`,
       orgName: org.name, receiptId: receipt.id, serialNumber: receipt.serialNumber,
       eligibleAmount: eligible, official: registered, brandColor: org.primaryColor, logoUrl: org.logoUrl,
     });
-    return receipt.id;
+    return { receiptId: receipt.id, mail };
   });
 
+  if (mail) await flushEmails([mail]);
   redirect(`/r/${receiptId}?t=${signReceiptToken(receiptId)}`);
 }

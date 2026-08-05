@@ -4,6 +4,7 @@ import { useTransition } from "react";
 import { Pause, Play, X, Loader2 } from "lucide-react";
 import { orgUpdatePlanStatus } from "@/app/(dashboard)/dashboard/actions";
 import { Button } from "@/components/ui/button";
+import { ConfirmButton } from "@/components/ui/confirm-dialog";
 
 export function OrgPlanControls({ planId, status }: { planId: string; status: string }) {
   const [pending, start] = useTransition();
@@ -25,17 +26,20 @@ export function OrgPlanControls({ planId, status }: { planId: string; status: st
           Resume
         </Button>
       )}
-      <Button
+      <ConfirmButton
         variant="ghost"
         size="sm"
         disabled={pending}
         className="text-destructive hover:bg-destructive/10"
-        onClick={() => {
-          if (confirm("Cancel this recurring plan?")) start(() => orgUpdatePlanStatus(planId, "cancel"));
-        }}
+        title="Cancel this recurring gift?"
+        description="No further donations will be collected. This can't be undone — the donor would need to set up a new recurring gift."
+        confirmLabel="Cancel plan"
+        destructive
+        onConfirm={() => start(() => orgUpdatePlanStatus(planId, "cancel"))}
       >
-        <X className="size-4" />
-      </Button>
+        <X className="size-4" aria-hidden />
+        <span className="sr-only">Cancel plan</span>
+      </ConfirmButton>
     </div>
   );
 }

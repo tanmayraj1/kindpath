@@ -68,6 +68,7 @@ export default async function TeamPage() {
                     <Td>
                       <TeamActions
                         userId={m.id}
+                        email={m.email}
                         role={m.role}
                         status={m.status}
                         isSelf={m.id === session.sub}

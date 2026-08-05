@@ -11,6 +11,14 @@ export type SessionClaims = {
   orgId?: string; // present for org users, donors and volunteers
   name: string;
   email: string;
+  /**
+   * Token version. Compared against the principal's stored `tokenVersion` on
+   * every request (src/lib/auth/revocation.ts); a mismatch means the session was
+   * revoked — password reset, account disabled, org suspended. Without it these
+   * 7-day tokens would stay valid long after access was withdrawn.
+   * Optional so sessions issued before this shipped simply read as version 0.
+   */
+  v?: number;
 };
 
 const ALG = "HS256";

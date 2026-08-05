@@ -1,5 +1,8 @@
 import { getSession } from "@/lib/auth/session";
 import { withTenant } from "@/lib/tenant";
+import { getOrgAccess } from "@/lib/access";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { audit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +22,21 @@ export async function GET(_req: Request, { params }: { params: { type: string } 
   }
   const orgId = session.orgId;
   const type = params.type;
+
+  // A suspended or cancelled org could still export every donor's PII: the page
+  // guards check access, but this route was reachable directly.
+  const access = await getOrgAccess(orgId);
+  if (!access.active) {
+    return new Response("This organization's access is not active.", { status: 403 });
+  }
+
+  // Bulk PII extraction deserves a tighter budget than a page view.
+  if (!(await rateLimit(`export:${orgId}`, 10, 60_000)).ok) {
+    return new Response("Too many exports. Please wait a minute.", {
+      status: 429,
+      headers: { "Retry-After": "60" },
+    });
+  }
 
   let csv = "";
   if (type === "donors") {
@@ -81,6 +99,16 @@ export async function GET(_req: Request, { params }: { params: { type: string } 
   } else {
     return new Response("Unknown export type", { status: 404 });
   }
+
+  // Exporting the donor roster is exactly the event a breach review asks about.
+  await audit({
+    actor: { type: "org_user", id: session.sub },
+    orgId,
+    action: `export.${type}`,
+    entityType: "organization",
+    entityId: orgId,
+    ip: clientIp(),
+  });
 
   return new Response(csv, {
     headers: {

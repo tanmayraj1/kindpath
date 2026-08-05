@@ -34,7 +34,7 @@ export default async function OrgUsers({ params }: { params: { id: string } }) {
                     {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString("en-CA") : "Never"}
                   </Td>
                   <Td className="text-right">
-                    <ResetPasswordButton userId={u.id} />
+                    <ResetPasswordButton userId={u.id} email={u.email} />
                   </Td>
                 </Tr>
               ))}

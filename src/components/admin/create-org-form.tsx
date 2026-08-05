@@ -1,10 +1,11 @@
 "use client";
 
 import { useFormState } from "react-dom";
-import { AlertCircle, CheckCircle2 } from "lucide-react";
 import { createOrganization, type AdminState } from "@/app/admin/actions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FormAlert } from "@/components/ui/form-alert";
+import { InviteNotice } from "@/components/dashboard/invite-notice";
 import { SubmitButton } from "@/components/auth/submit-button";
 
 const initial: AdminState = {};
@@ -14,19 +15,13 @@ export function CreateOrgForm() {
 
   return (
     <form action={action} className="flex flex-col gap-4">
-      {state.error && (
-        <div className="flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
-          <AlertCircle className="size-4 shrink-0" /> {state.error}
-        </div>
-      )}
+      <FormAlert>{state.error}</FormAlert>
       {state.ok && (
-        <div className="flex items-start gap-2 rounded-lg border border-success/20 bg-success/5 px-3 py-2.5 text-sm text-success">
-          <CheckCircle2 className="size-4 shrink-0" />
-          <span>
-            Organization created. Temporary admin password:{" "}
-            <strong className="font-mono">{state.tempPassword}</strong> — share it securely.
-          </span>
-        </div>
+        <InviteNotice
+          emailed={state.emailed}
+          url={state.inviteUrl}
+          what="Organization created — admin invitation"
+        />
       )}
 
       <div className="grid gap-4 sm:grid-cols-2">

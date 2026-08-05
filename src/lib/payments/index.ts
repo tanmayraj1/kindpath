@@ -48,15 +48,25 @@ export async function getPaymentProviderForOrg(orgId: string): Promise<PaymentPr
   if (cached) return cached;
 
   const { loadOrgGatewayCredentials } = await import("./org-credentials");
-  const creds = await loadOrgGatewayCredentials(orgId);
-  const provider = creds
-    ? new WeVendAdapter({
-        mid: creds.mid,
-        email: creds.email,
-        password: creds.password,
-        termId: creds.termId,
-      })
-    : getPaymentProvider(); // env-level merchant fallback
+  const load = await loadOrgGatewayCredentials(orgId);
+
+  // Credentials exist but can't be read: refuse. Falling back to the env-level
+  // merchant here would silently deposit this org's donations into a DIFFERENT
+  // merchant account. A visible failure is the only safe outcome.
+  if (load.status === "unreadable") {
+    throw new Error(`Payment gateway unavailable for this organization: ${load.reason}`);
+  }
+
+  const provider =
+    load.status === "ok"
+      ? new WeVendAdapter({
+          mid: load.creds.mid,
+          email: load.creds.email,
+          wvNumber: load.creds.wvNumber,
+          password: load.creds.password,
+          termId: load.creds.termId,
+        })
+      : getPaymentProvider(); // never configured → env-level merchant is intended
   orgProviders.set(orgId, provider);
   return provider;
 }

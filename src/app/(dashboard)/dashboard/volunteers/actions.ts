@@ -5,12 +5,20 @@ import { randomBytes } from "crypto";
 import { z } from "zod";
 import { withTenant } from "@/lib/tenant";
 import { requireOrgUser } from "@/lib/auth/guards";
-import { hashPassword } from "@/lib/auth/password";
+import { unusablePasswordHash, sendInvite } from "@/lib/auth/invite";
+import { revokeSessions } from "@/lib/auth/revocation";
+import { adminDb } from "@/lib/db";
 import { assertFeature } from "@/lib/access";
+import { audit } from "@/lib/audit";
+import { captureError } from "@/lib/observability";
 
-export type VolunteerState = { error?: string; ok?: boolean; tempPassword?: string };
-
-const TEMP_PASSWORD = "ChangeMe123!";
+export type VolunteerState = {
+  error?: string;
+  ok?: boolean;
+  /** Shown so an admin can pass the link on when email delivery is unavailable. */
+  inviteUrl?: string;
+  emailed?: boolean;
+};
 
 // ---------------- add volunteer ----------------
 const addSchema = z.object({
@@ -36,22 +44,56 @@ export async function addVolunteer(
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
 
-  const passwordHash = await hashPassword(TEMP_PASSWORD);
+  // Duplicate email is the ONE error we can describe; report anything else
+  // honestly instead of blaming the address (the old catch-all did, which sent
+  // admins hunting for a volunteer that was never there).
+  const existing = await withTenant(session.orgId, (tx) =>
+    tx.volunteer.findFirst({ where: { email: parsed.data.email }, select: { id: true } })
+  );
+  if (existing) return { error: "A volunteer with that email already exists." };
+
+  // No shared temporary password: the account is unusable until the volunteer
+  // follows their own single-use invitation link.
+  const passwordHash = await unusablePasswordHash();
+  let volunteerId: string;
   try {
-    await withTenant(session.orgId, (tx) =>
+    const created = await withTenant(session.orgId, (tx) =>
       tx.volunteer.create({
-        data: {
-          orgId: session.orgId,
-          ...parsed.data,
-          passwordHash,
-        },
+        data: { orgId: session.orgId, ...parsed.data, passwordHash, mustChangePassword: true },
       })
     );
-  } catch {
-    return { error: "A volunteer with that email already exists." };
+    volunteerId = created.id;
+  } catch (e) {
+    if (isUniqueViolation(e)) return { error: "A volunteer with that email already exists." };
+    captureError(e, { source: "volunteers.addVolunteer", orgId: session.orgId });
+    return { error: "We couldn't add that volunteer. Please try again." };
   }
+
+  const org = await adminDb.organization.findUnique({
+    where: { id: session.orgId },
+    select: { name: true, primaryColor: true, logoUrl: true },
+  });
+  const invite = await sendInvite({
+    principal: "volunteer",
+    principalId: volunteerId,
+    orgId: session.orgId,
+    email: parsed.data.email,
+    name: `${parsed.data.firstName} ${parsed.data.lastName}`,
+    orgName: org?.name,
+    brandColor: org?.primaryColor,
+    logoUrl: org?.logoUrl,
+    purpose: "invite",
+  });
+  await audit({
+    actor: { type: "org_user", id: session.sub },
+    orgId: session.orgId,
+    action: "volunteer.invited",
+    entityType: "volunteer",
+    entityId: volunteerId,
+  });
+
   revalidatePath("/dashboard/volunteers");
-  return { ok: true, tempPassword: TEMP_PASSWORD };
+  return { ok: true, inviteUrl: invite.url, emailed: invite.emailed };
 }
 
 // ---------------- status / password ----------------
@@ -61,18 +103,62 @@ export async function setVolunteerStatus(volunteerId: string, status: "active" |
   await withTenant(session.orgId, (tx) =>
     tx.volunteer.update({ where: { id: volunteerId }, data: { status } })
   );
+  // Deactivation must take effect now, not whenever their 7-day session expires.
+  if (status === "inactive") await revokeSessions("volunteer", volunteerId);
+  await audit({
+    actor: { type: "org_user", id: session.sub },
+    orgId: session.orgId,
+    action: `volunteer.${status}`,
+    entityType: "volunteer",
+    entityId: volunteerId,
+  });
   revalidatePath("/dashboard/volunteers");
 }
 
 export async function resetVolunteerPassword(volunteerId: string): Promise<VolunteerState> {
   const session = await requireOrgUser();
   await assertFeature(session.orgId, "volunteers");
-  const passwordHash = await hashPassword(TEMP_PASSWORD);
-  await withTenant(session.orgId, (tx) =>
-    tx.volunteer.update({ where: { id: volunteerId }, data: { passwordHash } })
+
+  const volunteer = await withTenant(session.orgId, (tx) =>
+    tx.volunteer.findFirst({ where: { id: volunteerId } })
   );
+  if (!volunteer) return { error: "That volunteer no longer exists." };
+
+  // Lock the account out immediately, then send a link only they can use.
+  const passwordHash = await unusablePasswordHash();
+  await withTenant(session.orgId, (tx) =>
+    tx.volunteer.update({
+      where: { id: volunteerId },
+      data: { passwordHash, mustChangePassword: true, failedLoginCount: 0, lockedUntil: null },
+    })
+  );
+  await revokeSessions("volunteer", volunteerId);
+
+  const org = await adminDb.organization.findUnique({
+    where: { id: session.orgId },
+    select: { name: true, primaryColor: true, logoUrl: true },
+  });
+  const invite = await sendInvite({
+    principal: "volunteer",
+    principalId: volunteerId,
+    orgId: session.orgId,
+    email: volunteer.email,
+    name: `${volunteer.firstName} ${volunteer.lastName}`,
+    orgName: org?.name,
+    brandColor: org?.primaryColor,
+    logoUrl: org?.logoUrl,
+    purpose: "reset",
+  });
+  await audit({
+    actor: { type: "org_user", id: session.sub },
+    orgId: session.orgId,
+    action: "volunteer.password_reset",
+    entityType: "volunteer",
+    entityId: volunteerId,
+  });
+
   revalidatePath("/dashboard/volunteers");
-  return { ok: true, tempPassword: TEMP_PASSWORD };
+  return { ok: true, inviteUrl: invite.url, emailed: invite.emailed };
 }
 
 // ---------------- passes ----------------
@@ -128,4 +214,9 @@ export async function revokePass(passId: string) {
     })
   );
   revalidatePath("/dashboard/volunteers");
+}
+
+/** Prisma unique-constraint violation (duplicate volunteer email within an org). */
+function isUniqueViolation(e: unknown): boolean {
+  return typeof e === "object" && e !== null && (e as { code?: string }).code === "P2002";
 }

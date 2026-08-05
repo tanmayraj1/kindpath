@@ -2,6 +2,10 @@
  * Minimal email sender. Uses Resend's HTTP API when RESEND_API_KEY is set;
  * otherwise logs to the console (dev fallback) so the full flow works locally
  * without an email account. No SDK dependency — just fetch.
+ *
+ * The dev fallback reports `simulated: true` so callers never record a receipt
+ * as genuinely delivered when nothing left the building. `RESEND_API_KEY` is a
+ * hard production requirement (src/lib/env.ts), so the fallback cannot run in prod.
  */
 type SendInput = {
   to: string;
@@ -9,16 +13,23 @@ type SendInput = {
   html: string;
 };
 
-export async function sendEmail({ to, subject, html }: SendInput): Promise<
-  { ok: true; id?: string } | { ok: false; error: string }
-> {
+export type SendResult =
+  | { ok: true; id?: string; simulated?: boolean }
+  | { ok: false; error: string; retryable: boolean };
+
+/** HTTP statuses worth another attempt: rate limits and transient server faults. */
+function isRetryableStatus(status: number): boolean {
+  return status === 408 || status === 429 || status >= 500;
+}
+
+export async function sendEmail({ to, subject, html }: SendInput): Promise<SendResult> {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.EMAIL_FROM ?? "KindPath <receipts@kindpath.app>";
 
   if (!apiKey) {
     // Dev fallback — no provider configured.
     console.log(`\n📧 [email:dev] to=${to}\n   subject=${subject}\n   (set RESEND_API_KEY to send for real)\n`);
-    return { ok: true, id: "dev-console" };
+    return { ok: true, id: "dev-console", simulated: true };
   }
 
   try {
@@ -32,13 +43,34 @@ export async function sendEmail({ to, subject, html }: SendInput): Promise<
     });
     if (!res.ok) {
       const body = await res.text();
-      return { ok: false, error: `Resend ${res.status}: ${body.slice(0, 200)}` };
+      return {
+        ok: false,
+        error: `Resend ${res.status}: ${body.slice(0, 200)}`,
+        retryable: isRetryableStatus(res.status),
+      };
     }
     const data = (await res.json()) as { id?: string };
     return { ok: true, id: data.id };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "send failed" };
+    // Network-level failure — always worth retrying.
+    return { ok: false, error: e instanceof Error ? e.message : "send failed", retryable: true };
   }
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Send with bounded exponential backoff. Only retries transient failures — a
+ * rejected address or bad API key fails immediately rather than burning 3 attempts.
+ */
+export async function sendEmailWithRetry(input: SendInput, attempts = 3): Promise<SendResult> {
+  let last: SendResult = { ok: false, error: "no attempt made", retryable: false };
+  for (let i = 0; i < attempts; i++) {
+    last = await sendEmail(input);
+    if (last.ok || !last.retryable) return last;
+    if (i < attempts - 1) await sleep(250 * 2 ** i); // 250ms, 500ms
+  }
+  return last;
 }
 
 /** Escape user-supplied text before interpolating into email HTML (anti-injection). */

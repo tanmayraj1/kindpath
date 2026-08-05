@@ -24,6 +24,15 @@ export type ReceiptData = {
   dateIssued: string;
   signatoryName?: string | null;
   year: number;
+  /**
+   * Receipt lifecycle. A voided or replaced receipt MUST be visibly marked:
+   * without it a refunded gift still downloads a pristine official receipt that
+   * a donor could file with CRA, which is the charity's problem, not theirs.
+   */
+  status?: "issued" | "voided" | "replaced";
+  /** Serial of the receipt this one supersedes (CRA replace-and-reference). */
+  replacesSerial?: string | null;
+  voidReason?: string | null;
   // white-label / customization
   brandColor?: string | null; // hex, e.g. #0d9488
   logoUrl?: string | null;
@@ -68,6 +77,30 @@ const s = StyleSheet.create({
   sigBlock: { width: "45%" },
   sigLine: { borderTopWidth: 1, borderTopColor: INK, marginTop: 28, paddingTop: 4 },
   customFooter: { marginTop: 24, fontSize: 9, color: INK },
+  // Diagonal VOID stamp across the whole page.
+  voidStamp: {
+    position: "absolute",
+    top: 300,
+    left: 0,
+    right: 0,
+    textAlign: "center",
+    fontSize: 96,
+    fontFamily: "Helvetica-Bold",
+    color: "#dc2626",
+    opacity: 0.18,
+    transform: "rotate(-24deg)",
+  },
+  voidBanner: {
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: "#dc2626",
+    borderRadius: 6,
+    padding: 12,
+    backgroundColor: "#fef2f2",
+  },
+  voidTitle: { fontSize: 11, fontFamily: "Helvetica-Bold", color: "#dc2626" },
+  voidText: { fontSize: 9, color: "#7f1d1d", marginTop: 3 },
+  replacesNote: { marginTop: 10, fontSize: 9, color: MUTED },
   footer: { marginTop: 16, fontSize: 8, color: MUTED, lineHeight: 1.4 },
 });
 
@@ -79,15 +112,28 @@ export function ReceiptDocument({ data }: { data: ReceiptData }) {
   const official = data.documentType !== "confirmation";
   const hasAdvantage = data.advantageValue > 0;
   const brand = brandOf(data.brandColor);
+  const cancelled = data.status === "voided" || data.status === "replaced";
+  const cancelledWord = data.status === "replaced" ? "REPLACED" : "VOID";
 
   return (
     <Document
-      title={`Receipt ${data.serialNumber}`}
+      title={`${cancelled ? `${cancelledWord} — ` : ""}Receipt ${data.serialNumber}`}
       author={data.orgName}
-      subject={official ? "Official Donation Receipt" : "Payment Confirmation"}
+      subject={
+        cancelled
+          ? `${cancelledWord} receipt — not valid for tax purposes`
+          : official
+            ? "Official Donation Receipt"
+            : "Payment Confirmation"
+      }
     >
       <Page size="A4" style={s.page}>
-        <View style={[s.accent, { backgroundColor: brand }]} />
+        <View style={[s.accent, { backgroundColor: cancelled ? "#dc2626" : brand }]} />
+        {cancelled ? (
+          <Text style={s.voidStamp} fixed>
+            {cancelledWord}
+          </Text>
+        ) : null}
         <View style={s.body}>
           <View style={s.headerRow}>
             <View>
@@ -114,7 +160,27 @@ export function ReceiptDocument({ data }: { data: ReceiptData }) {
               : "This is a confirmation of payment. It is NOT an official tax receipt."}
           </Text>
 
-          {data.message ? <Text style={s.message}>{data.message}</Text> : null}
+          {cancelled ? (
+            <View style={s.voidBanner}>
+              <Text style={s.voidTitle}>
+                This receipt has been {data.status === "replaced" ? "replaced" : "voided"} and is not
+                valid for income tax purposes.
+              </Text>
+              {data.voidReason ? <Text style={s.voidText}>Reason: {data.voidReason}</Text> : null}
+              <Text style={s.voidText}>
+                It is retained on file as the Income Tax Act requires. Do not submit it to the Canada
+                Revenue Agency.
+              </Text>
+            </View>
+          ) : null}
+
+          {data.message && !cancelled ? <Text style={s.message}>{data.message}</Text> : null}
+
+          {data.replacesSerial ? (
+            <Text style={s.replacesNote}>
+              This receipt replaces receipt no. {data.replacesSerial}.
+            </Text>
+          ) : null}
 
           <View style={s.rule} />
 

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useFormState } from "react-dom";
-import { AlertCircle, KeyRound, Ban, RotateCcw, TicketPlus } from "lucide-react";
+import { KeyRound, Ban, RotateCcw, TicketPlus } from "lucide-react";
 import {
   setVolunteerStatus,
   resetVolunteerPassword,
@@ -12,6 +12,8 @@ import {
 } from "@/app/(dashboard)/dashboard/volunteers/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { FormAlert } from "@/components/ui/form-alert";
+import { InviteNotice } from "./invite-notice";
 import { SubmitButton } from "@/components/auth/submit-button";
 
 export function VolunteerRowActions({
@@ -22,7 +24,7 @@ export function VolunteerRowActions({
   status: "active" | "inactive";
 }) {
   const [pending, start] = useTransition();
-  const [tempPassword, setTempPassword] = useState<string | null>(null);
+  const [reset, setReset] = useState<VolunteerState | null>(null);
 
   return (
     <div className="flex flex-col items-end gap-1">
@@ -34,8 +36,7 @@ export function VolunteerRowActions({
           title="Reset password"
           onClick={() =>
             start(async () => {
-              const r = await resetVolunteerPassword(volunteerId);
-              setTempPassword(r.tempPassword ?? null);
+              setReset(await resetVolunteerPassword(volunteerId));
             })
           }
         >
@@ -55,10 +56,11 @@ export function VolunteerRowActions({
           {status === "active" ? <Ban className="size-4" /> : <RotateCcw className="size-4" />}
         </Button>
       </div>
-      {tempPassword && (
-        <p className="text-xs text-muted-foreground">
-          Temp password: <span className="font-mono font-semibold">{tempPassword}</span>
-        </p>
+      {reset?.error && <FormAlert className="w-72">{reset.error}</FormAlert>}
+      {reset?.ok && (
+        <div className="w-72">
+          <InviteNotice emailed={reset.emailed} url={reset.inviteUrl} what="Password reset link" />
+        </div>
       )}
     </div>
   );
@@ -93,11 +95,7 @@ export function IssuePassForm({ volunteerId }: { volunteerId: string }) {
       <SubmitButton size="sm">
         <TicketPlus className="size-4" /> Issue pass
       </SubmitButton>
-      {state.error && (
-        <p className="flex w-full items-center gap-1 text-xs text-destructive">
-          <AlertCircle className="size-3.5" /> {state.error}
-        </p>
-      )}
+      {state.error && <FormAlert className="w-full">{state.error}</FormAlert>}
     </form>
   );
 }

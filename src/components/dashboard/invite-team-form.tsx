@@ -1,10 +1,12 @@
 "use client";
 
 import { useFormState } from "react-dom";
-import { AlertCircle, CheckCircle2, UserPlus } from "lucide-react";
+import { UserPlus } from "lucide-react";
 import { inviteTeamMember, type TeamState } from "@/app/(dashboard)/dashboard/actions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FormAlert } from "@/components/ui/form-alert";
+import { InviteNotice } from "./invite-notice";
 import { SubmitButton } from "@/components/auth/submit-button";
 
 const initial: TeamState = {};
@@ -16,20 +18,8 @@ export function InviteTeamForm() {
 
   return (
     <form action={action} className="flex flex-col gap-4">
-      {state.error && (
-        <div className="flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
-          <AlertCircle className="size-4 shrink-0" /> {state.error}
-        </div>
-      )}
-      {state.ok && (
-        <div className="flex items-start gap-2 rounded-lg border border-success/20 bg-success/5 px-3 py-2.5 text-sm text-success">
-          <CheckCircle2 className="size-4 shrink-0" />
-          <span>
-            Invited. Temporary password: <strong className="font-mono">{state.tempPassword}</strong> —
-            share it securely; they should change it after first login.
-          </span>
-        </div>
-      )}
+      <FormAlert>{state.error}</FormAlert>
+      {state.ok && <InviteNotice emailed={state.emailed} url={state.inviteUrl} />}
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="flex flex-col gap-2">
           <Label htmlFor="name">Name</Label>
@@ -37,7 +27,14 @@ export function InviteTeamForm() {
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="email">Email</Label>
-          <Input id="email" name="email" type="email" placeholder="alex@org.org" required />
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            placeholder="alex@org.org"
+            aria-invalid={!!state.error}
+            required
+          />
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="role">Role</Label>

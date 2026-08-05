@@ -1,13 +1,27 @@
 import "server-only";
 import { redirect } from "next/navigation";
-import { getSession } from "./session";
+import { getSessionStatus } from "./session";
 import type { SessionClaims } from "./jwt";
+
+/**
+ * Route guards. Each resolves the session through `getSessionStatus`, which
+ * re-checks revocation against the database — so disabling a user or suspending
+ * an organization takes effect on the very next request, not in 7 days.
+ */
+
+/** Where to send someone whose session was rejected, and why. */
+function bounce(reason: string): never {
+  if (reason === "org_suspended") redirect("/login?reason=suspended");
+  if (reason === "disabled") redirect("/login?reason=disabled");
+  if (reason === "stale_token") redirect("/login?reason=expired");
+  redirect("/login");
+}
 
 /** Require any authenticated principal, else send to login. */
 export async function requireSession(): Promise<SessionClaims> {
-  const session = await getSession();
-  if (!session) redirect("/login");
-  return session;
+  const { claims, reason } = await getSessionStatus();
+  if (!claims) bounce(reason);
+  return claims;
 }
 
 /** Require an org user (org admin portal). Returns the session with orgId. */

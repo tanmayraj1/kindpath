@@ -3,6 +3,7 @@ import { formatAddress } from "@/lib/receipts";
 import { renderReceiptPdf, type ReceiptData } from "@/lib/pdf/receipt-document";
 import { verifyReceiptToken } from "@/lib/receipt-links";
 import { getSession } from "@/lib/auth/session";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -14,6 +15,12 @@ export async function GET(
   req: Request,
   { params }: { params: { id: string } }
 ) {
+  // Rendering a PDF is expensive and this route accepts an unauthenticated signed
+  // link, so it needs its own budget — otherwise it's a cheap way to burn CPU.
+  if (!(await rateLimit(`receipt-pdf:${clientIp()}`, 30, 60_000)).ok) {
+    return new Response("Too many requests", { status: 429, headers: { "Retry-After": "60" } });
+  }
+
   const receipt = await adminDb.receipt.findUnique({
     where: { id: params.id },
     include: { org: true },
@@ -61,6 +68,11 @@ export async function GET(
     dateIssued: fmtDate(receipt.dateIssued),
     signatoryName: receipt.signatoryNameSnapshot,
     year: receipt.year,
+    // Drives the VOID/REPLACED stamp — a refunded gift must not render as a
+    // pristine official receipt someone could file with CRA.
+    status: receipt.status,
+    voidReason: receipt.voidReason,
+    replacesSerial: receipt.replacesSerial,
     // white-label + customization (live from the org)
     brandColor: receipt.org.primaryColor,
     logoUrl: receipt.org.logoUrl,

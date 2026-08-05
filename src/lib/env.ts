@@ -7,7 +7,19 @@
  * secrets to compile; the hard failure still happens on first real request.
  */
 const REQUIRED = ["DATABASE_URL", "AUTH_SECRET"] as const;
-const PROD_REQUIRED = ["ADMIN_DATABASE_URL", "NEXT_PUBLIC_APP_URL", "CRON_SECRET"] as const;
+const PROD_REQUIRED = [
+  "ADMIN_DATABASE_URL",
+  "NEXT_PUBLIC_APP_URL",
+  "CRON_SECRET",
+  // Without this, src/lib/email.ts silently falls back to console logging and
+  // every receipt is recorded as delivered while nothing actually sends.
+  "RESEND_API_KEY",
+  // Encrypts each org's gateway credentials. It falls back to AUTH_SECRET, so
+  // leaving it unset couples credential decryption to session signing: rotating
+  // AUTH_SECRET would destroy every org's stored gateway credentials and
+  // invalidate every receipt link already emailed to a donor.
+  "CREDENTIALS_KEY",
+] as const;
 
 let validated = false;
 
@@ -36,8 +48,12 @@ export function assertEnv() {
       }
     }
     if (process.env.PAYMENT_PROVIDER === "wevend") {
-      for (const key of ["WEVEND_BASE_URL", "WEVEND_IFRAME_URL", "WEVEND_MID", "WEVEND_EMAIL", "WEVEND_PASSWORD", "WEVEND_TERM_ID"]) {
+      for (const key of ["WEVEND_BASE_URL", "WEVEND_IFRAME_URL", "WEVEND_MID", "WEVEND_PASSWORD", "WEVEND_TERM_ID"]) {
         if (!process.env[key]) missing.push(key);
+      }
+      // Two auth shapes: org/ISV (wvNumber) or merchant (email). Exactly one is enough.
+      if (!process.env.WEVEND_WV_NUMBER && !process.env.WEVEND_EMAIL) {
+        missing.push("WEVEND_WV_NUMBER or WEVEND_EMAIL");
       }
     }
   }

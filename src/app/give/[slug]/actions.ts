@@ -7,7 +7,9 @@ import { adminDb } from "@/lib/db";
 import { withTenant } from "@/lib/tenant";
 import { getPaymentProviderForOrg, supportsHostedSale } from "@/lib/payments";
 import { nextReceiptSerial, formatAddress } from "@/lib/receipts";
-import { sendReceiptEmail } from "@/lib/notifications";
+import { queueReceiptEmail, flushEmails } from "@/lib/notifications";
+import { captureError } from "@/lib/observability";
+import { isDuplicateChargeError, findReceiptForCharge } from "@/lib/donations";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { signChargeToken, verifyChargeToken } from "@/lib/charge-token";
 import { signReceiptToken } from "@/lib/receipt-links";
@@ -164,13 +166,13 @@ async function recordDonation(d: CompleteInput): Promise<{ receiptId: string } |
   const reqFundId = d.fundId && d.fundId !== "none" ? d.fundId : null;
   const reqCampaignId = d.campaignId && d.campaignId !== "none" ? d.campaignId : null;
 
-  const receiptId = await withTenant(org.id, async (tx) => {
+  const write = () => withTenant(org.id, async (tx) => {
     // de-dupe: same charge already recorded?
     const existing = await tx.donation.findFirst({
-      where: { providerChargeRef: chargeRef },
+      where: { chargeKey: chargeRef },
       include: { receipt: true },
     });
-    if (existing?.receipt) return existing.receipt.id;
+    if (existing?.receipt) return { receiptId: existing.receipt.id, mail: null };
 
     // validate fund/campaign actually belong to this org (no cross-tenant refs)
     const fundId =
@@ -251,6 +253,7 @@ async function recordDonation(d: CompleteInput): Promise<{ receiptId: string } |
         currency,
         status: "succeeded",
         providerChargeRef: chargeRef,
+        chargeKey: chargeRef, // unique — the double-submit guard
         receivedAt: new Date(),
       },
     });
@@ -283,7 +286,8 @@ async function recordDonation(d: CompleteInput): Promise<{ receiptId: string } |
       },
     });
 
-    await sendReceiptEmail(tx, {
+    // Queued inside the transaction, sent after it commits — see lib/notifications.
+    const mail = await queueReceiptEmail(tx, {
       orgId: org.id,
       donorId: donor.id,
       donorEmail: d.email,
@@ -297,10 +301,51 @@ async function recordDonation(d: CompleteInput): Promise<{ receiptId: string } |
       logoUrl: org.logoUrl,
     });
 
-    return receipt.id;
+    return { receiptId: receipt.id, mail };
   });
 
+  let receiptId: string;
+  let mail: Awaited<ReturnType<typeof queueReceiptEmail>> | null;
+  try {
+    ({ receiptId, mail } = await write());
+  } catch (e) {
+    // A concurrent submit won the race for this charge. Not an error for the
+    // donor — hand them the receipt the winning request already created.
+    if (!isDuplicateChargeError(e)) throw e;
+    const winner = await findReceiptForCharge(org.id, chargeRef);
+    if (!winner) throw e;
+    return { receiptId: winner };
+  }
+
+  if (mail) await flushEmails([mail]);
   return { receiptId };
+}
+
+/**
+ * The donor's card has ALREADY been charged by the time we get here. If recording
+ * the gift throws, we must not show a generic error page — that reads as "your
+ * payment failed" to someone whose money is gone. Report loudly, reassure honestly.
+ */
+async function recordDonationSafely(
+  d: CompleteInput
+): Promise<{ receiptId: string } | { error: string }> {
+  try {
+    return await recordDonation(d);
+  } catch (e) {
+    captureError(e, {
+      source: "give.recordDonation",
+      slug: d.slug,
+      amount: d.amount,
+      email: d.email,
+      severity: "charged_not_recorded",
+    });
+    return {
+      error:
+        "Your payment went through, but we hit a problem issuing your receipt. " +
+        "You have not been charged twice — please do not retry. " +
+        "The organization has been alerted and will email your receipt shortly.",
+    };
+  }
 }
 
 export async function completeDonation(
@@ -311,7 +356,7 @@ export async function completeDonation(
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Please check your details." };
   }
-  const result = await recordDonation(parsed.data);
+  const result = await recordDonationSafely(parsed.data);
   if ("error" in result) return { error: result.error };
 
   // signed link so the public receipt page only shows PII to the actual donor
@@ -329,7 +374,7 @@ export async function completeKioskDonation(
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Please check your details." };
   }
-  const result = await recordDonation(parsed.data);
+  const result = await recordDonationSafely(parsed.data);
   if ("error" in result) return { error: result.error };
   // No redirect, no receipt link on screen — the donor gets their receipt by email.
   return { ok: true };

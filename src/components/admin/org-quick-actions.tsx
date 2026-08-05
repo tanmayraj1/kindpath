@@ -4,6 +4,7 @@ import { useTransition } from "react";
 import { UserCog, ShieldOff, ShieldCheck, Loader2 } from "lucide-react";
 import { impersonateOrg, grantAccess, revokeAccess } from "@/app/admin/actions";
 import { Button } from "@/components/ui/button";
+import { ConfirmButton } from "@/components/ui/confirm-dialog";
 
 export function OrgQuickActions({ orgId, status }: { orgId: string; status: string }) {
   const [pending, start] = useTransition();
@@ -21,18 +22,19 @@ export function OrgQuickActions({ orgId, status }: { orgId: string; status: stri
         Open as admin
       </Button>
       {active ? (
-        <Button
+        <ConfirmButton
           variant="outline"
           size="sm"
           disabled={pending}
           className="border-destructive/30 text-destructive hover:bg-destructive/10"
-          onClick={() => {
-            if (confirm("Revoke access? The org's admins will be locked out and the subscription cancelled."))
-              start(() => revokeAccess(orgId));
-          }}
+          title="Revoke this organization's access?"
+          description="Everyone at this organization — admins, staff, volunteers and donors — is signed out immediately and locked out, and the subscription is cancelled. Their data is retained."
+          confirmLabel="Revoke access"
+          destructive
+          onConfirm={() => start(() => revokeAccess(orgId))}
         >
-          <ShieldOff className="size-4" /> Revoke access
-        </Button>
+          <ShieldOff className="size-4" aria-hidden /> Revoke access
+        </ConfirmButton>
       ) : (
         <Button
           variant="outline"
