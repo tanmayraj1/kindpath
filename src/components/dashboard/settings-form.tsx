@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { useFormState } from "react-dom";
-import { AlertCircle, CheckCircle2 } from "lucide-react";
 import { updateOrgSettings, type ActionState } from "@/app/(dashboard)/dashboard/actions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FormAlert } from "@/components/ui/form-alert";
 import { SubmitButton } from "@/components/auth/submit-button";
+import { PROVINCES } from "@/lib/tax";
 
 const initial: ActionState = {};
 
@@ -20,7 +21,16 @@ type Props = {
   receiptMessage?: string | null;
   receiptFooter?: string | null;
   receiptPrefix?: string | null;
+  receiptMode: "per_gift" | "annual" | "both";
+  minReceiptAmount: number;
+  province?: string | null;
+  addressLine1?: string | null;
+  city?: string | null;
+  postalCode?: string | null;
 };
+
+const selectCls =
+  "flex h-11 w-full rounded-lg border border-input bg-background px-3.5 text-sm focus-visible:border-brand-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30";
 
 export function SettingsForm(props: Props) {
   const [state, action] = useFormState(updateOrgSettings, initial);
@@ -28,18 +38,8 @@ export function SettingsForm(props: Props) {
 
   return (
     <form action={action} className="flex flex-col gap-5">
-      {state.error && (
-        <div className="flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
-          <AlertCircle className="size-4 shrink-0" />
-          {state.error}
-        </div>
-      )}
-      {state.ok && (
-        <div className="flex items-center gap-2 rounded-lg border border-success/20 bg-success/5 px-3 py-2.5 text-sm text-success">
-          <CheckCircle2 className="size-4 shrink-0" />
-          Settings saved.
-        </div>
-      )}
+      <FormAlert>{state.error}</FormAlert>
+      {state.ok && <FormAlert variant="success">Settings saved.</FormAlert>}
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="name">Organization name</Label>
@@ -97,6 +97,63 @@ export function SettingsForm(props: Props) {
       </div>
 
       <div className="rounded-xl border border-border p-4">
+        <p className="text-sm font-medium">Organization address</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Printed on official receipts, and your province determines whether KindPath bills you GST
+          or HST. Without it we have to assume 5% GST.
+        </p>
+        <div className="mt-3 flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="addressLine1">Street address</Label>
+            <Input
+              id="addressLine1"
+              name="addressLine1"
+              placeholder="123 Faith Street"
+              autoComplete="address-line1"
+              defaultValue={props.addressLine1 ?? ""}
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="city">City</Label>
+              <Input
+                id="city"
+                name="city"
+                autoComplete="address-level2"
+                defaultValue={props.city ?? ""}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="province">Province</Label>
+              <select
+                id="province"
+                name="province"
+                defaultValue={props.province ?? ""}
+                className={selectCls}
+              >
+                <option value="">Select…</option>
+                {PROVINCES.map((p) => (
+                  <option key={p.code} value={p.code}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="postalCode">Postal code</Label>
+              <Input
+                id="postalCode"
+                name="postalCode"
+                placeholder="M5V 2T6"
+                autoComplete="postal-code"
+                defaultValue={props.postalCode ?? ""}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border p-4">
         <p className="text-sm font-medium">Brand color</p>
         <p className="mt-1 text-xs text-muted-foreground">
           Retints your donation page, campaigns and receipts.
@@ -115,6 +172,46 @@ export function SettingsForm(props: Props) {
               className="size-9 shrink-0 rounded-lg border border-border"
               style={{ background: props.primaryColor ?? "#4f46e5" }}
             />
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border p-4">
+        <p className="text-sm font-medium">Receipting policy</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          How and when this organization issues receipts. A gift is only ever receipted once —
+          annual roll-ups exclude gifts that already have a per-gift receipt.
+        </p>
+        <div className="mt-3 grid gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="receiptMode">Receipt mode</Label>
+            <select
+              id="receiptMode"
+              name="receiptMode"
+              defaultValue={props.receiptMode}
+              className={selectCls}
+            >
+              <option value="per_gift">Per gift — a receipt with every donation</option>
+              <option value="annual">Annual — one consolidated receipt per year</option>
+              <option value="both">Both — per gift, plus an annual summary</option>
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Annual roll-ups on the Receipts page require &lsquo;annual&rsquo; or &lsquo;both&rsquo;.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="minReceiptAmount">Minimum receipt amount (CAD)</Label>
+            <Input
+              id="minReceiptAmount"
+              name="minReceiptAmount"
+              type="number"
+              min={0}
+              step="0.01"
+              defaultValue={String(props.minReceiptAmount ?? 0)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Annual receipts are skipped below this total. 0 issues for any amount.
+            </p>
           </div>
         </div>
       </div>

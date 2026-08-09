@@ -162,7 +162,13 @@ export function AppShell({
           role="dialog"
           aria-modal={open}
           aria-hidden={!open}
-          inert={!open}
+          // React 18 doesn't recognise `inert`, and passing a boolean makes it
+          // drop the attribute entirely with a console warning — so `inert={!open}`
+          // silently did nothing. The empty string is the correct HTML form, and
+          // `undefined` removes it. The explicit tabIndex={-1} on the links below
+          // is what actually carries this in React 18; inert is belt-and-braces
+          // for browsers that support it.
+          {...(open ? {} : ({ inert: "" } as Record<string, string>))}
           className={cn(
             "fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col border-r border-border bg-card transition-transform duration-300 lg:hidden",
             open ? "translate-x-0" : "-translate-x-full"

@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -230,6 +231,14 @@ const settingsSchema = z.object({
     .regex(/^[A-Za-z0-9-]*$/, "Prefix can use letters, numbers and dashes only")
     .optional()
     .or(z.literal("")),
+  // These three are READ by business logic and, until now, written by nothing —
+  // which made annual receipts unusable and silently billed every org 5% GST.
+  receiptMode: z.enum(["per_gift", "annual", "both"]),
+  minReceiptAmount: z.coerce.number().min(0).max(1_000_000).default(0),
+  province: z.string().max(2).optional().or(z.literal("")),
+  addressLine1: z.string().max(200).optional().or(z.literal("")),
+  city: z.string().max(100).optional().or(z.literal("")),
+  postalCode: z.string().max(12).optional().or(z.literal("")),
 });
 
 export async function updateOrgSettings(
@@ -247,6 +256,12 @@ export async function updateOrgSettings(
     receiptMessage: formData.get("receiptMessage") || undefined,
     receiptFooter: formData.get("receiptFooter") || undefined,
     receiptPrefix: formData.get("receiptPrefix") || undefined,
+    receiptMode: formData.get("receiptMode") || "per_gift",
+    minReceiptAmount: formData.get("minReceiptAmount") || 0,
+    province: formData.get("province") || undefined,
+    addressLine1: formData.get("addressLine1") || undefined,
+    city: formData.get("city") || undefined,
+    postalCode: formData.get("postalCode") || undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message };
 
@@ -273,11 +288,19 @@ export async function updateOrgSettings(
         receiptMessage: parsed.data.receiptMessage || null,
         receiptFooter: parsed.data.receiptFooter || null,
         receiptPrefix: parsed.data.receiptPrefix || null,
+        receiptMode: parsed.data.receiptMode,
+        minReceiptAmount: parsed.data.minReceiptAmount,
+        province: parsed.data.province || null,
+        addressLine1: parsed.data.addressLine1 || null,
+        city: parsed.data.city || null,
+        postalCode: parsed.data.postalCode || null,
       },
     })
   );
   revalidatePath("/dashboard/settings");
   revalidatePath("/dashboard");
+  // The province drives GST vs HST on KindPath's own invoices.
+  revalidatePath("/dashboard/billing");
   return { ok: true };
 }
 
@@ -679,11 +702,17 @@ export async function sendCampaign(_prev: CampaignState, formData: FormData): Pr
 
   // Queue every recipient FIRST, in one write, then deliver.
   //
-  // The old shape sent up to 200 emails sequentially inside the request. On
-  // Vercel that exceeds the function limit, so the action was killed partway —
-  // and because nothing had been recorded yet, a retry re-sent to everyone who
-  // had already received it. Queued rows make the send resumable and the
+  // The original shape sent up to 200 emails sequentially with nothing recorded,
+  // so a killed request re-sent to everyone on retry. Queued rows make the
   // outcome visible per recipient.
+  //
+  // The re-read below MUST be scoped to this send. An earlier version matched
+  // `status: "queued"` across the whole org, which swept up stale rows left by
+  // any previously-killed campaign: one could be marked `sent` while carrying a
+  // different campaign's subject, and its sibling stranded `queued` forever,
+  // permanently inflating the delivery-failure count. `sendId` correlates the
+  // rows to this send and nothing else.
+  const sendId = randomUUID();
   const queued = await withTenant(session.orgId, async (tx) => {
     await tx.notification.createMany({
       data: batch.map((r) => ({
@@ -693,11 +722,16 @@ export async function sendCampaign(_prev: CampaignState, formData: FormData): Pr
         category: "marketing",
         status: "queued" as const,
         caslChecked: true,
-        payload: { subject, segment },
+        payload: { subject, segment, sendId },
       })),
     });
     return tx.notification.findMany({
-      where: { orgId: session.orgId, category: "marketing", status: "queued" },
+      where: {
+        orgId: session.orgId,
+        category: "marketing",
+        status: "queued",
+        payload: { path: ["sendId"], equals: sendId },
+      },
       select: { id: true, donorId: true },
     });
   });

@@ -9,6 +9,8 @@ import { requirePlatformAdmin } from "@/lib/auth/guards";
 import { unusablePasswordHash, sendInvite } from "@/lib/auth/invite";
 import { revokeSessions, revokeOrgSessions } from "@/lib/auth/revocation";
 import { planPrice, isPlanKey } from "@/lib/plans";
+import { audit as auditLog } from "@/lib/audit";
+import { clientIp } from "@/lib/rate-limit";
 
 export type AdminState = {
   error?: string;
@@ -99,23 +101,25 @@ export async function createOrganization(
 }
 
 // ---- suspend / activate / archive ----
-export async function setOrgStatus(orgId: string, status: "active" | "suspended" | "archived") {
+export async function setOrgStatus(
+  orgId: string,
+  status: "active" | "suspended" | "archived"
+): Promise<AdminState> {
   const admin = await requirePlatformAdmin();
+
+  // Report a missing org instead of throwing a raw P2025 into the error boundary.
+  const org = await adminDb.organization.findUnique({ where: { id: orgId }, select: { id: true } });
+  if (!org) return { error: "That organization no longer exists." };
+
   await adminDb.organization.update({ where: { id: orgId }, data: { status } });
   // Suspension has to bite immediately — sessions live for 7 days otherwise, and
   // they carry full access to this tenant's donor PII.
   if (status !== "active") await revokeOrgSessions(orgId);
-  await adminDb.auditLog.create({
-    data: {
-      orgId,
-      actorType: "platform_admin",
-      actorId: admin.sub,
-      action: `org.${status}`,
-      entityType: "organization",
-      entityId: orgId,
-    },
-  });
+  await audit(admin.sub, orgId, `org.${status}`, "organization", orgId);
+
   revalidatePath("/admin/organizations");
+  revalidatePath(`/admin/organizations/${orgId}`);
+  return { ok: true };
 }
 
 // ---- manually trigger a recurring-billing run (God Mode) ----
@@ -128,10 +132,22 @@ export async function runBillingNow() {
   return summary;
 }
 
-/** Platform-admin audit entry. `orgId` is empty for platform-wide actions. */
+/**
+ * Platform-admin audit entry. `orgId` is empty for platform-wide actions.
+ *
+ * Delegates to the shared helper rather than writing auditLog directly: the
+ * local version recorded no IP and wasn't try/caught, so a failed audit write
+ * aborted the admin action itself — the exact inverse of the intended policy
+ * (see src/lib/audit.ts).
+ */
 async function audit(actorId: string, orgId: string, action: string, entityType?: string, entityId?: string) {
-  await adminDb.auditLog.create({
-    data: { orgId: orgId || null, actorType: "platform_admin", actorId, action, entityType, entityId },
+  await auditLog({
+    actor: { type: "platform_admin", id: actorId },
+    orgId: orgId || null,
+    action,
+    entityType,
+    entityId,
+    ip: clientIp(),
   });
 }
 
@@ -191,23 +207,29 @@ export async function updateSubscription(
 }
 
 // ---- grant / revoke ACCESS (the big switches) ----
-export async function revokeAccess(orgId: string) {
+export async function revokeAccess(orgId: string): Promise<AdminState> {
   const admin = await requirePlatformAdmin();
+  const exists = await adminDb.organization.findUnique({ where: { id: orgId }, select: { id: true } });
+  if (!exists) return { error: "That organization no longer exists." };
   await adminDb.organization.update({ where: { id: orgId }, data: { status: "suspended" } });
   await adminDb.subscription.updateMany({ where: { orgId }, data: { status: "cancelled" } });
   await revokeOrgSessions(orgId);
   await audit(admin.sub, orgId, "access.revoke", "organization", orgId);
   revalidatePath(`/admin/organizations/${orgId}`);
   revalidatePath("/admin/organizations");
+  return { ok: true };
 }
 
-export async function grantAccess(orgId: string) {
+export async function grantAccess(orgId: string): Promise<AdminState> {
   const admin = await requirePlatformAdmin();
+  const exists = await adminDb.organization.findUnique({ where: { id: orgId }, select: { id: true } });
+  if (!exists) return { error: "That organization no longer exists." };
   await adminDb.organization.update({ where: { id: orgId }, data: { status: "active" } });
   await adminDb.subscription.updateMany({ where: { orgId }, data: { status: "active" } });
   await audit(admin.sub, orgId, "access.grant", "organization", orgId);
   revalidatePath(`/admin/organizations/${orgId}`);
   revalidatePath("/admin/organizations");
+  return { ok: true };
 }
 
 // ---- feature grant / revoke / reset-to-plan ----
@@ -303,24 +325,28 @@ export async function resetOrgUserPassword(userId: string): Promise<AdminState> 
 }
 
 // ---- impersonate an org admin (support) ----
-export async function impersonateOrg(orgId: string) {
+/**
+ * Sign in as an org's admin for support. Returns an error instead of silently
+ * doing nothing: an org whose only admin is disabled (or that never had one)
+ * previously made "Open as admin" a button that spun and then did nothing at all,
+ * with no way for support to tell why.
+ */
+export async function impersonateOrg(orgId: string): Promise<AdminState> {
   const admin = await requirePlatformAdmin();
   const orgUser = await adminDb.orgUser.findFirst({
-    where: { orgId, role: "org_admin" },
+    where: { orgId, role: "org_admin", status: "active" },
     include: { org: true },
   });
-  if (!orgUser) return;
+  if (!orgUser) {
+    const anyUser = await adminDb.orgUser.findFirst({ where: { orgId }, select: { status: true } });
+    return {
+      error: anyUser
+        ? "This organization has no ACTIVE admin to open as. Re-enable one, or reset their password."
+        : "This organization has no admin user yet.",
+    };
+  }
 
-  await adminDb.auditLog.create({
-    data: {
-      orgId,
-      actorType: "platform_admin",
-      actorId: admin.sub,
-      action: "impersonate.start",
-      entityType: "org_user",
-      entityId: orgUser.id,
-    },
-  });
+  await audit(admin.sub, orgId, "impersonate.start", "org_user", orgUser.id);
 
   await createSession({
     sub: orgUser.id,
@@ -329,6 +355,11 @@ export async function impersonateOrg(orgId: string) {
     orgId: orgUser.orgId,
     name: orgUser.name,
     email: orgUser.email,
+    // Must carry the CURRENT token version. Omitting it defaults to 0, so
+    // impersonating anyone whose password had ever been reset produced a session
+    // that revocation immediately rejected — support was bounced straight back
+    // to /login with "your access changed", for no visible reason.
+    v: orgUser.tokenVersion,
   });
   redirect("/dashboard");
 }

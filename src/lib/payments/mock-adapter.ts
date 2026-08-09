@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import type { PaymentProvider } from "./provider";
 import type {
   EnrollInput,
@@ -112,8 +113,43 @@ export class MockAdapter implements PaymentProvider {
     return { success: true, providerRefundRef: this.id("re") };
   }
 
+  /**
+   * Verify + normalize a simulated webhook.
+   *
+   * This used to be a bare `JSON.parse` with no signature at all. Because
+   * `getPaymentProvider()` falls back to MockAdapter for any unset or
+   * unrecognized PAYMENT_PROVIDER, that made `POST /api/webhooks/pos` an
+   * unauthenticated endpoint that could forge a `refund.succeeded` event and
+   * VOID a real charity's official tax receipt. A test double must never be an
+   * authentication bypass.
+   *
+   * Now: refuses outright in production, and otherwise requires an HMAC over the
+   * raw body keyed by WEBHOOK_TEST_SECRET (falling back to AUTH_SECRET in dev so
+   * local testing still works without extra setup).
+   */
   async verifyWebhook(req: RawWebhook): Promise<PaymentEvent> {
-    // A real adapter verifies an HMAC signature here.
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "The mock payment adapter does not accept webhooks in production. " +
+          "Set PAYMENT_PROVIDER to a real provider."
+      );
+    }
+
+    const secret = process.env.WEBHOOK_TEST_SECRET ?? process.env.AUTH_SECRET;
+    if (!secret) {
+      throw new Error("Mock webhook verification requires WEBHOOK_TEST_SECRET or AUTH_SECRET.");
+    }
+
+    const provided = req.headers["x-kindpath-signature"] ?? req.headers["X-KindPath-Signature"];
+    if (!provided) throw new Error("Missing x-kindpath-signature header.");
+
+    const expected = createHmac("sha256", secret).update(req.body).digest("hex");
+    const a = Buffer.from(provided);
+    const b = Buffer.from(expected);
+    if (a.length !== b.length || !timingSafeEqual(a, b)) {
+      throw new Error("Invalid webhook signature.");
+    }
+
     const parsed = JSON.parse(req.body) as Partial<PaymentEvent>;
     return {
       id: parsed.id ?? this.id("evt"),

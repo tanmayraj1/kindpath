@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { log } from "./observability";
 
 /**
  * Rate limiter with two backends:
@@ -43,12 +44,26 @@ async function redisLimit(
       ]),
       cache: "no-store",
     });
-    if (!res.ok) return true; // fail open
+    if (!res.ok) {
+      // Fail OPEN so a limiter outage never locks out real users — but say so.
+      // Silence here meant a revoked token or an Upstash outage turned EVERY
+      // rate limit in the app (login, password reset, donation charge) into a
+      // no-op with zero signal that anything had changed.
+      log("warn", "rate limiter unavailable — failing open", {
+        source: "rate-limit",
+        status: res.status,
+      });
+      return true;
+    }
     const data = (await res.json()) as Array<{ result: number }>;
     const count = data?.[0]?.result ?? 0;
     return count <= limit;
-  } catch {
-    return true; // fail open on network error
+  } catch (e) {
+    log("warn", "rate limiter unreachable — failing open", {
+      source: "rate-limit",
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return true;
   }
 }
 

@@ -461,6 +461,13 @@ export async function changePasswordAction(
   const session = await getSession();
   if (!session) redirect("/login");
 
+  // Session-gated, but it verifies the CURRENT password — without a limit that
+  // is an unmetered password-confirmation oracle for anyone holding a stolen
+  // session cookie.
+  if (!(await rateLimit(`change-pw:${session.sub}`, 5, 15 * 60_000)).ok) {
+    return { error: "Too many attempts. Please wait a few minutes and try again." };
+  }
+
   const parsed = changeSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0]?.message };
 

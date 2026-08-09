@@ -27,15 +27,33 @@ export function log(level: Level, message: string, fields: Record<string, unknow
 
 type Dsn = { publicKey: string; host: string; projectId: string };
 
+let warnedAboutDsn = false;
+
+/**
+ * Parse a Sentry DSN. Returns null when absent (fine — reporting is optional) or
+ * malformed (NOT fine). A typo'd DSN used to silently disable error reporting
+ * forever, and looked exactly like having none configured; now it says so once.
+ */
 export function parseDsn(dsn: string | undefined | null): Dsn | null {
   if (!dsn) return null;
+  const complain = (reason: string) => {
+    if (!warnedAboutDsn) {
+      warnedAboutDsn = true;
+      console.warn(
+        `⚠️  SENTRY_DSN is set but unusable (${reason}) — error reporting is DISABLED.`
+      );
+    }
+    return null;
+  };
   try {
     const u = new URL(dsn);
     const projectId = u.pathname.replace(/\//g, "");
-    if (!u.username || !u.host || !projectId) return null;
+    if (!u.username) return complain("no public key");
+    if (!u.host) return complain("no host");
+    if (!projectId) return complain("no project id");
     return { publicKey: u.username, host: u.host, projectId };
   } catch {
-    return null;
+    return complain("not a valid URL");
   }
 }
 

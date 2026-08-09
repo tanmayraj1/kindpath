@@ -45,6 +45,12 @@ export default async function SettingsPage() {
               receiptMessage={org?.receiptMessage}
               receiptFooter={org?.receiptFooter}
               receiptPrefix={org?.receiptPrefix}
+              receiptMode={(org?.receiptMode as "per_gift" | "annual" | "both") ?? "per_gift"}
+              minReceiptAmount={Number(org?.minReceiptAmount ?? 0)}
+              province={org?.province}
+              addressLine1={org?.addressLine1}
+              city={org?.city}
+              postalCode={org?.postalCode}
             />
           </CardContent>
         </Card>

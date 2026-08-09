@@ -40,6 +40,22 @@ export function assertEnv() {
     if (process.env.AUTH_SECRET && process.env.AUTH_SECRET.length < 32) {
       missing.push("AUTH_SECRET (must be ≥32 chars in production)");
     }
+
+    // A real provider must be named explicitly. Leaving this unset used to fall
+    // through to MockAdapter (src/lib/payments/index.ts), whose webhook verifier
+    // accepted unsigned JSON — turning /api/webhooks/pos into an unauthenticated
+    // way to void a charity's official tax receipts. Never default in production.
+    const provider = process.env.PAYMENT_PROVIDER;
+    if (!provider) {
+      missing.push("PAYMENT_PROVIDER (must be 'stripe' or 'wevend' in production)");
+    } else if (provider === "mock" || provider === "mock-hosted") {
+      missing.push(
+        `PAYMENT_PROVIDER is '${provider}' — the simulated gateway must never run in production`
+      );
+    } else if (provider !== "stripe" && provider !== "wevend") {
+      missing.push(`PAYMENT_PROVIDER '${provider}' is not a known provider`);
+    }
+
     if (process.env.PAYMENT_PROVIDER === "stripe") {
       if (!process.env.STRIPE_SECRET_KEY) missing.push("STRIPE_SECRET_KEY");
       if (!process.env.STRIPE_WEBHOOK_SECRET) missing.push("STRIPE_WEBHOOK_SECRET");

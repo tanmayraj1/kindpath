@@ -197,6 +197,28 @@ model PasswordResetToken {
   @@map("password_reset_tokens")
 }
 
+/// Heartbeat ledger for scheduled jobs.
+///
+/// Without this, a cron that stops running is indistinguishable from a cron with
+/// nothing to do: if Vercel Cron is disabled or CRON_SECRET drifts, every donor's
+/// recurring gift silently stops being collected and no alarm fires (the 401 path
+/// returns before any error is captured, so it isn't even in the logs).
+///
+/// Global by design — no org_id. Written only via adminDb.
+model JobRun {
+  id         String    @id @default(uuid())
+  job        String
+  status     String    @default("running")
+  startedAt  DateTime  @default(now()) @map("started_at")
+  finishedAt DateTime? @map("finished_at")
+  durationMs Int?      @map("duration_ms")
+  summary    Json?
+  error      String?
+
+  @@index([job, startedAt])
+  @@map("job_runs")
+}
+
 model WebhookEvent {
   id              String    @id @default(uuid())
   providerEventId String    @unique @map("provider_event_id")
@@ -355,6 +377,11 @@ model Donor {
   // donor self-service auth (optional)
   passwordHash        String?       @map("password_hash")
   googleId            String?       @map("google_id")
+  /// Set when the donor exercised their right to erasure (PIPEDA / Quebec Law 25).
+  /// The row is SCRUBBED, not deleted: donations and receipts must be retained for
+  /// CRA, and the receipt snapshots preserve what each receipt said when issued.
+  /// Enforced by onDelete: Restrict on Donation.donor and Receipt.donor.
+  anonymizedAt        DateTime?     @map("anonymized_at")
   /// Bumped to invalidate every existing session for this donor (see OrgUser.tokenVersion).
   tokenVersion        Int           @default(0) @map("token_version")
   mustChangePassword  Boolean       @default(false) @map("must_change_password")
@@ -472,7 +499,10 @@ model Donation {
   createdAt            DateTime       @default(now()) @map("created_at")
 
   org           Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  donor         Donor          @relation(fields: [donorId], references: [id], onDelete: Cascade)
+  /// Restrict, NOT Cascade. A donation is a financial record the Income Tax Act
+  /// requires be retained; deleting a donor row must never silently take it with
+  /// them. Erasure goes through anonymization (Donor.anonymizedAt) instead.
+  donor         Donor          @relation(fields: [donorId], references: [id], onDelete: Restrict)
   fund          Fund?          @relation(fields: [fundId], references: [id])
   recurringPlan RecurringPlan? @relation(fields: [recurringPlanId], references: [id])
   campaign      Campaign?      @relation(fields: [campaignId], references: [id])
@@ -611,7 +641,9 @@ model Receipt {
 
   org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   donation Donation?    @relation(fields: [donationId], references: [id])
-  donor    Donor        @relation(fields: [donorId], references: [id], onDelete: Cascade)
+  /// Restrict — see Donation.donor. An issued receipt must outlive the donor row;
+  /// it already carries donorNameSnapshot/donorAddressSnapshot for exactly this.
+  donor    Donor        @relation(fields: [donorId], references: [id], onDelete: Restrict)
 
   @@unique([orgId, serialNumber])
   @@index([orgId, donorId, year])

@@ -19,7 +19,12 @@ import { PrismaClient } from "@prisma/client";
 
 // Tables intentionally global (no org_id): auth lookups happen before a tenant
 // context exists, and migration bookkeeping is Prisma's.
-const GLOBAL_TABLES = new Set(["platform_admins", "webhook_events", "_prisma_migrations"]);
+const GLOBAL_TABLES = new Set([
+  "platform_admins",
+  "webhook_events",
+  "job_runs",
+  "_prisma_migrations",
+]);
 
 type TableState = { tablename: string; rls: boolean; forced: boolean; has_org_id: boolean };
 
