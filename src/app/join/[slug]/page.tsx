@@ -4,6 +4,7 @@ import { Logo } from "@/components/brand/logo";
 import { Badge } from "@/components/ui/badge";
 import { Branded } from "@/components/give/branded";
 import { MembershipJoin } from "@/components/give/membership-join";
+import { orgUsesHostedFlow } from "@/lib/payments/hosted";
 import { getPublicMembership } from "@/lib/queries/memberships";
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
@@ -32,7 +33,11 @@ export default async function JoinPage({ params }: { params: { slug: string } })
         <Badge variant="brand">Membership</Badge>
       </header>
       <main className="container flex items-start justify-center py-10 sm:py-16">
-        <MembershipJoin org={{ name: org.name, slug: org.slug }} plans={plans} />
+        <MembershipJoin
+          org={{ name: org.name, slug: org.slug }}
+          plans={plans}
+          hosted={await orgUsesHostedFlow(org.id)}
+        />
       </main>
     </Branded>
   );

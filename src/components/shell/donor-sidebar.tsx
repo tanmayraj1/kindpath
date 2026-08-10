@@ -7,6 +7,7 @@ import {
   CreditCard,
   FileCheck2,
   UserCog,
+  ShieldCheck,
 } from "lucide-react";
 import { AppShell, type NavItem } from "./app-shell";
 
@@ -17,6 +18,7 @@ const items: NavItem[] = [
   { href: "/portal/payment-methods", label: "Payment methods", icon: CreditCard },
   { href: "/portal/receipts", label: "Tax receipts", icon: FileCheck2 },
   { href: "/portal/profile", label: "Profile", icon: UserCog },
+  { href: "/portal/my-data", label: "Your data", icon: ShieldCheck },
 ];
 
 export function DonorShell({ children }: { children: React.ReactNode }) {

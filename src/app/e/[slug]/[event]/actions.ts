@@ -9,6 +9,7 @@ import { queueReceiptEmail, flushEmails } from "@/lib/notifications";
 import { verifyChargeToken } from "@/lib/charge-token";
 import { signReceiptToken } from "@/lib/receipt-links";
 import { formErrors, type FieldErrors } from "@/lib/validation";
+import { captureError } from "@/lib/observability";
 
 export type TicketState = { error?: string; fields?: FieldErrors };
 
@@ -47,7 +48,12 @@ export async function completeTicketPurchase(
   const registered = org.charityStatus === "registered";
   const year = new Date().getFullYear();
 
-  const { receiptId, mail } = await withTenant(org.id, async (tx) => {
+  // Everything past this point runs AFTER the card is charged, so a throw must
+  // never reach the generic error page — to a payer that reads as "my payment
+  // failed" and invites a second attempt.
+  const { receiptId, mail } = await (async () => {
+   try {
+    return await withTenant(org.id, async (tx) => {
     const tt = await tx.ticketType.findFirst({ where: { id: d.ticketTypeId, eventId: d.eventId } });
     const ev = await tx.event.findFirst({ where: { id: d.eventId } });
     if (!tt || !ev) throw new Error("Event/ticket not found");
@@ -103,7 +109,27 @@ export async function completeTicketPurchase(
       eligibleAmount: eligible, official: registered, brandColor: org.primaryColor, logoUrl: org.logoUrl,
     });
     return { receiptId: receipt.id, mail };
-  });
+    });
+   } catch (e) {
+    captureError(e, {
+      source: "events.completeTicketPurchase",
+      slug: d.slug,
+      eventId: d.eventId,
+      email: d.email,
+      severity: "charged_not_recorded",
+    });
+    return { receiptId: null, mail: null };
+   }
+  })();
+
+  if (!receiptId) {
+    return {
+      error:
+        "Your payment went through, but we hit a problem completing your order. " +
+        "You have not been charged twice — please do not retry. " +
+        "The organization has been alerted and will follow up shortly.",
+    };
+  }
 
   if (mail) await flushEmails([mail]);
   redirect(`/r/${receiptId}?t=${signReceiptToken(receiptId)}`);

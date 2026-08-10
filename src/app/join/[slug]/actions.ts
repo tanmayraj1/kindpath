@@ -9,6 +9,7 @@ import { queueReceiptEmail, flushEmails } from "@/lib/notifications";
 import { verifyChargeToken } from "@/lib/charge-token";
 import { signReceiptToken } from "@/lib/receipt-links";
 import { formErrors, type FieldErrors } from "@/lib/validation";
+import { captureError } from "@/lib/observability";
 
 const FREQ_DAYS: Record<string, number> = { weekly: 7, monthly: 30, quarterly: 90, annual: 365 };
 
@@ -49,7 +50,10 @@ export async function completeMembership(
   const amount = charge.amount;
   const year = new Date().getFullYear();
 
-  const { receiptId, mail } = await withTenant(org.id, async (tx) => {
+  // After this point the card is already charged — see the ticket flow.
+  const { receiptId, mail } = await (async () => {
+   try {
+    return await withTenant(org.id, async (tx) => {
     const plan = await tx.membershipPlan.findFirst({ where: { id: d.planId } });
     if (!plan) throw new Error("Plan not found");
 
@@ -91,7 +95,7 @@ export async function completeMembership(
       data: {
         orgId: org.id,
         donorId: donor.id,
-        providerToken: `tok_${charge.ref}`,
+        providerToken: charge.token || `tok_${charge.ref}`,
         brand: charge.brand ?? null,
         last4: charge.last4 ?? null,
         isDefault: true,
@@ -160,7 +164,27 @@ export async function completeMembership(
       logoUrl: org.logoUrl,
     });
     return { receiptId: receipt.id, mail };
-  });
+    });
+   } catch (e) {
+    captureError(e, {
+      source: "memberships.completeMembership",
+      slug: d.slug,
+      planId: d.planId,
+      email: d.email,
+      severity: "charged_not_recorded",
+    });
+    return { receiptId: null, mail: null };
+   }
+  })();
+
+  if (!receiptId) {
+    return {
+      error:
+        "Your payment went through, but we hit a problem completing your order. " +
+        "You have not been charged twice — please do not retry. " +
+        "The organization has been alerted and will follow up shortly.",
+    };
+  }
 
   if (mail) await flushEmails([mail]);
   redirect(`/r/${receiptId}?t=${signReceiptToken(receiptId)}`);

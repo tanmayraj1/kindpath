@@ -14,7 +14,7 @@ import { formErrors, type FieldErrors } from "@/lib/validation";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { signChargeToken, verifyChargeToken } from "@/lib/charge-token";
 import { signReceiptToken } from "@/lib/receipt-links";
-import { signHostedState, HOSTED_STATE_COOKIE } from "@/lib/hosted-state";
+import { signHostedState, HOSTED_STATE_COOKIE, type HostedKind } from "@/lib/hosted-state";
 
 // ---------- step 1: authorize a charge (payment happens first) ----------
 export type ChargeState =
@@ -56,26 +56,42 @@ export async function authorizeCharge(
   return { ok: true, chargeRef: token };
 }
 
-// ---------- step 1b: hosted gateways (WeVend) — create order + redirect ----------
+// ---------- step 1b: hosted gateways (WeVend iframe, Stripe Checkout) ----------
 export type HostedStart =
   | { ok: true; redirectTo: string }
   | { ok: false; message: string };
 
-/**
- * For redirect gateways: create the sale order, stash signed state in a cookie
- * (survives the off-site hop; can't be tampered), and hand back the gateway URL.
- * The donor pays on the gateway's page and returns to /give/[slug]/response.
- */
-export async function beginHostedDonation(input: {
+type HostedInput = {
   slug: string;
   amount: number;
+  currency?: string;
+  frequency?: "one_time" | "monthly";
   fundId?: string;
   campaignId?: string;
-  frequency: "one_time" | "monthly";
-  currency?: string;
-}): Promise<HostedStart> {
-  const { slug, amount, frequency } = input;
+  // ticket purchases
+  eventId?: string;
+  ticketTypeId?: string;
+  quantity?: number;
+  // membership joins
+  planId?: string;
+  description?: string;
+};
+
+/**
+ * Start a hosted payment: create the order at the gateway, stash signed state in
+ * a short-lived httpOnly cookie (it survives the off-site hop and can't be
+ * tampered with), and hand back the URL to send the payer to. They complete
+ * payment on the gateway's own page and return to /give/[slug]/response.
+ *
+ * Shared by donations, ticket purchases and membership joins. The last two used
+ * to bypass this entirely and post a mock placeholder token, so with a real
+ * gateway configured they ran a demo code path and could never take money.
+ */
+async function beginHosted(kind: HostedKind, input: HostedInput): Promise<HostedStart> {
+  const { slug, amount } = input;
   const currency = input.currency ?? "CAD";
+  const frequency = input.frequency ?? "one_time";
+
   if (!Number.isFinite(amount) || amount < 1 || amount > 1_000_000) {
     return { ok: false, message: "Enter a valid amount." };
   }
@@ -98,16 +114,19 @@ export async function beginHostedDonation(input: {
       money: { amount, currency },
       // WeVend requires the redirect URL to end in /response.
       redirectUrl: `${base}/give/${slug}/response`,
+      // Recurring gifts need the method retained for off-session charges later.
+      savePaymentMethod: frequency === "monthly",
+      description: input.description ?? `${org.name} — ${kind === "donation" ? "Donation" : kind === "ticket" ? "Event tickets" : "Membership"}`,
     });
   } catch (e) {
-    const { captureError } = await import("@/lib/observability");
-    captureError(e, { source: "give.beginHostedDonation", slug, amount });
+    captureError(e, { source: "give.beginHosted", kind, slug, amount });
     return { ok: false, message: "The payment service is unavailable. Please try again shortly." };
   }
 
   cookies().set(
     HOSTED_STATE_COOKIE,
     signHostedState({
+      kind,
       orgId: org.id,
       slug,
       amount,
@@ -115,11 +134,47 @@ export async function beginHostedDonation(input: {
       fundId: input.fundId,
       campaignId: input.campaignId,
       frequency,
+      eventId: input.eventId,
+      ticketTypeId: input.ticketTypeId,
+      quantity: input.quantity,
+      planId: input.planId,
       paymentOrderId: init.paymentOrderId,
     }),
     { httpOnly: true, sameSite: "lax", path: "/", maxAge: 30 * 60, secure: process.env.NODE_ENV === "production" }
   );
   return { ok: true, redirectTo: init.redirectTo };
+}
+
+export async function beginHostedDonation(input: {
+  slug: string;
+  amount: number;
+  fundId?: string;
+  campaignId?: string;
+  frequency: "one_time" | "monthly";
+  currency?: string;
+}): Promise<HostedStart> {
+  return beginHosted("donation", input);
+}
+
+export async function beginHostedTicketPurchase(input: {
+  slug: string;
+  amount: number;
+  eventId: string;
+  ticketTypeId: string;
+  quantity: number;
+  description?: string;
+}): Promise<HostedStart> {
+  return beginHosted("ticket", input);
+}
+
+export async function beginHostedMembership(input: {
+  slug: string;
+  amount: number;
+  planId: string;
+  frequency?: "one_time" | "monthly";
+  description?: string;
+}): Promise<HostedStart> {
+  return beginHosted("membership", input);
 }
 
 // ---------- step 2: capture details + issue receipt ----------
@@ -218,7 +273,9 @@ async function recordDonation(d: CompleteInput): Promise<{ receiptId: string } |
         data: {
           orgId: org.id,
           donorId: donor.id,
-          providerToken: `tok_${chargeRef}`,
+          // The gateway's own reusable token when it gave us one; otherwise the
+          // transaction id, which is what WeVend's sale-with-token expects.
+          providerToken: charge.token || `tok_${chargeRef}`,
           // Only what the gateway actually told us. Null renders as
           // "Card •••• ····" in the portal, which is honest; a hardcoded
           // "Visa •••• 4242" is not.

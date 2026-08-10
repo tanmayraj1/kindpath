@@ -4,7 +4,7 @@ const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
 /** Public, indexable pages only. */
 export default function sitemap(): MetadataRoute.Sitemap {
-  const routes = ["", "/contact", "/login", "/signup", "/privacy", "/terms"];
+  const routes = ["", "/contact", "/login", "/signup", "/privacy", "/terms", "/dpa"];
   return routes.map((path) => ({
     url: `${base}${path}`,
     lastModified: new Date(),

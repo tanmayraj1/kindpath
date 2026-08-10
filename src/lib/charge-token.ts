@@ -19,6 +19,13 @@ export type ChargePayload = {
    */
   brand?: string | null;
   last4?: string | null;
+  /**
+   * Gateway token for charging this payer again off-session, when the gateway
+   * retained one. WeVend reuses the transaction id; Stripe returns "cus_x|pm_y".
+   * Recorded on the donor's payment method so the recurring cron charges the
+   * card they actually used instead of a synthesised placeholder.
+   */
+  token?: string | null;
   exp: number; // unix seconds
 };
 

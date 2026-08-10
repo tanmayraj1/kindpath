@@ -21,20 +21,19 @@ export default async function ProfilePage() {
             <CardTitle>Your details</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-5">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="flex flex-col gap-2">
-                <Label>Name</Label>
-                <Input
-                  defaultValue={donor ? `${donor.firstName} ${donor.lastName}` : ""}
-                  disabled
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label>Email</Label>
-                <Input defaultValue={donor?.email ?? ""} disabled />
-              </div>
+            {/* Email stays fixed: it identifies the account and is the unique key
+                for this donor within the organization. Name is now editable —
+                it's what gets printed on a tax receipt. */}
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="email-readonly">Email</Label>
+              <Input id="email-readonly" defaultValue={donor?.email ?? ""} disabled />
+              <p className="text-xs text-muted-foreground">
+                Your email identifies your account here. Contact the organization to change it.
+              </p>
             </div>
             <ProfileForm
+              firstName={donor?.firstName}
+              lastName={donor?.lastName}
               phone={donor?.phone}
               addressLine1={donor?.addressLine1}
               city={donor?.city}

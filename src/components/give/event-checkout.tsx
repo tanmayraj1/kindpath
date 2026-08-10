@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useFormState } from "react-dom";
 import { Ticket, CreditCard, Lock, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
-import { authorizeCharge } from "@/app/give/[slug]/actions";
+import { authorizeCharge, beginHostedTicketPurchase } from "@/app/give/[slug]/actions";
 import { completeTicketPurchase, type TicketState } from "@/app/e/[slug]/[event]/actions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,7 +17,8 @@ type TicketTypeT = { id: string; name: string; price: number; advantage: number 
 const PROVINCES = ["AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE", "QC", "SK", "YT"];
 const initial: TicketState = {};
 
-export function EventCheckout({ org, eventId, ticketTypes }: { org: Org; eventId: string; ticketTypes: TicketTypeT[] }) {
+export function EventCheckout({
+  hosted = false, org, eventId, ticketTypes }: { org: Org; eventId: string; ticketTypes: TicketTypeT[]; hosted?: boolean }) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [ttId, setTtId] = useState(ticketTypes[0]?.id ?? "");
   const [qty, setQty] = useState(1);
@@ -29,6 +30,27 @@ export function EventCheckout({ org, eventId, ticketTypes }: { org: Org; eventId
   const tt = ticketTypes.find((t) => t.id === ttId);
   const total = tt ? tt.price * qty : 0;
   const eligible = tt ? Math.max(0, (tt.price - tt.advantage) * qty) : 0;
+
+  /** Redirect gateways (Stripe Checkout, WeVend) take payment on their own page. */
+  async function payHosted() {
+    if (!tt) return;
+    setPayError(null);
+    setCharging(true);
+    const res = await beginHostedTicketPurchase({
+      slug: org.slug,
+      amount: total,
+      eventId,
+      ticketTypeId: ttId,
+      quantity: qty,
+      description: `${qty}× ${tt.name}`,
+    });
+    if (res.ok) {
+      window.location.assign(res.redirectTo);
+    } else {
+      setCharging(false);
+      setPayError(res.message);
+    }
+  }
 
   async function pay() {
     if (!tt) return;
@@ -67,7 +89,7 @@ export function EventCheckout({ org, eventId, ticketTypes }: { org: Org; eventId
                 onChange={(e) => setQty(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
                 className="h-10 w-20 rounded-lg border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30" />
             </div>
-            <Button size="lg" className="w-full" disabled={!tt} onClick={() => setStep(2)}>
+            <Button size="lg" className="w-full" disabled={!tt} onClick={() => (hosted ? payHosted() : setStep(2))}>
               Continue · {formatCAD(total, { maximumFractionDigits: 0 })}
             </Button>
           </div>

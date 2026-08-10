@@ -1,16 +1,19 @@
 "use client";
 
 import { useFormState } from "react-dom";
-import { AlertCircle, CheckCircle2 } from "lucide-react";
 import { updateDonorProfile, type PortalState } from "@/app/portal/actions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Field } from "@/components/ui/field";
+import { FormAlert } from "@/components/ui/form-alert";
 import { SubmitButton } from "@/components/auth/submit-button";
 
 const initial: PortalState = {};
 const PROVINCES = ["AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE", "QC", "SK", "YT"];
 
 type Props = {
+  firstName?: string | null;
+  lastName?: string | null;
   phone?: string | null;
   addressLine1?: string | null;
   city?: string | null;
@@ -25,21 +28,42 @@ export function ProfileForm(props: Props) {
 
   return (
     <form action={action} className="flex flex-col gap-5">
-      {state.error && (
-        <div className="flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
-          <AlertCircle className="size-4 shrink-0" /> {state.error}
-        </div>
-      )}
-      {state.ok && (
-        <div className="flex items-center gap-2 rounded-lg border border-success/20 bg-success/5 px-3 py-2.5 text-sm text-success">
-          <CheckCircle2 className="size-4 shrink-0" /> Profile updated.
-        </div>
-      )}
+      <FormAlert>{state.error}</FormAlert>
+      {state.ok && <FormAlert variant="success">Profile updated.</FormAlert>}
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="phone">Phone</Label>
-        <Input id="phone" name="phone" defaultValue={props.phone ?? ""} placeholder="(optional)" />
+      {/* Editable: this is the name printed on an official tax receipt, and a
+          donor previously had no way to correct a misspelling of their own. */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field
+          name="firstName"
+          label="First name"
+          defaultValue={props.firstName ?? ""}
+          errors={state.fields}
+          autoComplete="given-name"
+          required
+        />
+        <Field
+          name="lastName"
+          label="Last name"
+          defaultValue={props.lastName ?? ""}
+          errors={state.fields}
+          autoComplete="family-name"
+          required
+        />
       </div>
+      <p className="-mt-2 text-xs text-muted-foreground">
+        Receipts already issued keep the name they were issued with — that snapshot is what the CRA
+        requires. Ask the organization to reissue one if a correction matters.
+      </p>
+
+      <Field
+        name="phone"
+        label="Phone"
+        defaultValue={props.phone ?? ""}
+        placeholder="(optional)"
+        errors={state.fields}
+        autoComplete="tel"
+      />
       <div className="flex flex-col gap-2">
         <Label htmlFor="addressLine1">Address</Label>
         <Input id="addressLine1" name="addressLine1" defaultValue={props.addressLine1 ?? ""} />

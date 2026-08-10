@@ -194,6 +194,7 @@ export function getOrgDonorDetail(orgId: string, donorId: string) {
           .join(", "),
         addressComplete: donor.addressStatus === "complete",
         casl: donor.caslConsent,
+        anonymizedAt: donor.anonymizedAt,
       },
       totalGiven: Number(agg._sum.eligibleAmount ?? 0),
       donations: donations.map((d) => ({

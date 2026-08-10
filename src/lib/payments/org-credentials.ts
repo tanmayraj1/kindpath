@@ -14,7 +14,7 @@ import { captureError } from "@/lib/observability";
  *   - `wvNumber` → org/ISV mode   (POST /auth/org-token with wvNumber + password)
  * `mid` identifies the merchant to transact as in both modes.
  */
-export type OrgGatewayCredentials = {
+export type WeVendCredentials = {
   provider: "wevend";
   mid: string;
   termId: string;
@@ -22,6 +22,19 @@ export type OrgGatewayCredentials = {
   email?: string;
   wvNumber?: string;
 };
+
+/**
+ * Each charity connects its OWN Stripe account, so donations settle directly to
+ * the charity — KindPath never becomes an intermediary holding donor funds, which
+ * would be a money-transmission posture nobody here wants.
+ */
+export type StripeCredentials = {
+  provider: "stripe";
+  secretKey: string;
+  webhookSecret?: string;
+};
+
+export type OrgGatewayCredentials = WeVendCredentials | StripeCredentials;
 
 /**
  * Loading credentials has THREE outcomes, and conflating them misroutes money.
@@ -52,15 +65,36 @@ export async function clearOrgGatewayCredentials(orgId: string): Promise<void> {
   });
 }
 
-/** Validate the decrypted shape. Returns null with a reason when unusable. */
+/** Validate the decrypted shape. Returns null when unusable — never a partial. */
 export function parseCredentials(plain: string): OrgGatewayCredentials | null {
   try {
-    const parsed = JSON.parse(plain) as OrgGatewayCredentials;
-    if (parsed.provider !== "wevend") return null;
-    if (!parsed.mid || !parsed.password || !parsed.termId) return null;
-    // Exactly one auth mode must be identifiable.
-    if (!parsed.email && !parsed.wvNumber) return null;
-    return parsed;
+    const parsed = JSON.parse(plain) as Partial<OrgGatewayCredentials>;
+
+    if (parsed.provider === "stripe") {
+      const c = parsed as Partial<StripeCredentials>;
+      if (!c.secretKey) return null;
+      // A publishable key here would mean the org pasted the wrong one; charging
+      // would fail later with an opaque Stripe error instead of failing now.
+      if (!/^sk_(test|live)_/.test(c.secretKey)) return null;
+      return { provider: "stripe", secretKey: c.secretKey, webhookSecret: c.webhookSecret };
+    }
+
+    if (parsed.provider === "wevend") {
+      const c = parsed as Partial<WeVendCredentials>;
+      if (!c.mid || !c.password || !c.termId) return null;
+      // Exactly one auth mode must be identifiable.
+      if (!c.email && !c.wvNumber) return null;
+      return {
+        provider: "wevend",
+        mid: c.mid,
+        termId: c.termId,
+        password: c.password,
+        email: c.email,
+        wvNumber: c.wvNumber,
+      };
+    }
+
+    return null;
   } catch {
     return null;
   }
@@ -92,18 +126,32 @@ export async function loadOrgGatewayCredentials(orgId: string): Promise<Credenti
 /** Non-secret summary for admin UI ("configured, mid ending 1600"). */
 export async function describeOrgGatewayCredentials(orgId: string): Promise<{
   configured: boolean;
+  provider?: "wevend" | "stripe";
   error?: string;
   midTail?: string;
   email?: string;
   wvNumber?: string;
   termId?: string;
+  keyTail?: string;
+  liveMode?: boolean;
 }> {
   const load = await loadOrgGatewayCredentials(orgId);
   if (load.status === "none") return { configured: false };
   if (load.status === "unreadable") return { configured: true, error: load.reason };
+
   const { creds } = load;
+  if (creds.provider === "stripe") {
+    return {
+      configured: true,
+      provider: "stripe",
+      // Never the whole key — just enough to tell two accounts apart.
+      keyTail: creds.secretKey.slice(-4),
+      liveMode: creds.secretKey.startsWith("sk_live_"),
+    };
+  }
   return {
     configured: true,
+    provider: "wevend",
     midTail: creds.mid.slice(-4),
     email: creds.email,
     wvNumber: creds.wvNumber,

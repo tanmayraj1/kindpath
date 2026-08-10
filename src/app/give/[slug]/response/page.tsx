@@ -8,6 +8,7 @@ import { verifyHostedState, HOSTED_STATE_COOKIE } from "@/lib/hosted-state";
 import { signChargeToken } from "@/lib/charge-token";
 import { Branded } from "@/components/give/branded";
 import { HostedDetailsForm } from "@/components/give/hosted-details-form";
+import { HostedTicketForm, HostedMembershipForm } from "@/components/give/hosted-purchase-form";
 import { Logo } from "@/components/brand/logo";
 import { buttonVariants } from "@/components/ui/button";
 import { formatCAD } from "@/lib/utils";
@@ -95,23 +96,60 @@ export default async function HostedResponsePage({
     currency: state.currency,
     brand: confirmed.cardBrand ?? null,
     last4: confirmed.last4 ?? null,
+    token: confirmed.providerToken ?? null,
   });
+
+  const card = confirmed.last4 ? `${confirmed.cardBrand ?? "Card"} •••• ${confirmed.last4}` : null;
+  const amountLabel = formatCAD(state.amount);
+
+  // Which completion form depends on what they were buying. Cookies written
+  // before `kind` existed have none, and were always donations.
+  let form;
+  if (state.kind === "ticket" && state.eventId && state.ticketTypeId) {
+    form = (
+      <HostedTicketForm
+        slug={params.slug}
+        orgName={org.name}
+        chargeRef={chargeRef}
+        amountLabel={amountLabel}
+        eventId={state.eventId}
+        ticketTypeId={state.ticketTypeId}
+        quantity={state.quantity ?? 1}
+        card={card}
+      />
+    );
+  } else if (state.kind === "membership" && state.planId) {
+    form = (
+      <HostedMembershipForm
+        slug={params.slug}
+        orgName={org.name}
+        chargeRef={chargeRef}
+        amountLabel={amountLabel}
+        planId={state.planId}
+        card={card}
+      />
+    );
+  } else {
+    form = (
+      <HostedDetailsForm
+        slug={params.slug}
+        orgName={org.name}
+        chargeRef={chargeRef}
+        amountLabel={amountLabel}
+        amount={state.amount}
+        fundId={state.fundId ?? "none"}
+        campaignId={state.campaignId ?? "none"}
+        frequency={state.frequency}
+        card={card}
+      />
+    );
+  }
 
   return (
     <Branded color={org.primaryColor}>
       <div className="container flex min-h-dvh items-start justify-center py-10 sm:py-16">
         <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-lg sm:p-8">
-          <HostedDetailsForm
-            slug={params.slug}
-            orgName={org.name}
-            chargeRef={chargeRef}
-            amountLabel={formatCAD(state.amount)}
-            amount={state.amount}
-            fundId={state.fundId ?? "none"}
-            campaignId={state.campaignId ?? "none"}
-            frequency={state.frequency}
-            card={confirmed.last4 ? `${confirmed.cardBrand ?? "Card"} •••• ${confirmed.last4}` : null}
-          />
+          {form}
         </div>
       </div>
     </Branded>

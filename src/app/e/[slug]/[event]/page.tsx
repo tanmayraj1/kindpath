@@ -5,6 +5,7 @@ import { Logo } from "@/components/brand/logo";
 import { Badge } from "@/components/ui/badge";
 import { Branded } from "@/components/give/branded";
 import { EventCheckout } from "@/components/give/event-checkout";
+import { orgUsesHostedFlow } from "@/lib/payments/hosted";
 import { getPublicEvent } from "@/lib/queries/events";
 
 export async function generateMetadata({ params }: { params: { slug: string; event: string } }): Promise<Metadata> {
@@ -47,7 +48,12 @@ export default async function EventPage({ params }: { params: { slug: string; ev
             <span>Hosted by {org.name}</span>
           </div>
         </div>
-        <EventCheckout org={{ slug: org.slug }} eventId={event.id} ticketTypes={event.ticketTypes} />
+        <EventCheckout
+          org={{ slug: org.slug }}
+          eventId={event.id}
+          ticketTypes={event.ticketTypes}
+          hosted={await orgUsesHostedFlow(org.id)}
+        />
       </main>
     </Branded>
   );

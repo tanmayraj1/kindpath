@@ -11,10 +11,13 @@ import { revokeSessions, revokeOrgSessions } from "@/lib/auth/revocation";
 import { planPrice, isPlanKey } from "@/lib/plans";
 import { audit as auditLog } from "@/lib/audit";
 import { clientIp } from "@/lib/rate-limit";
+import { formErrors, type FieldErrors } from "@/lib/validation";
 
 export type AdminState = {
   error?: string;
   ok?: boolean;
+  /** Per-field validation messages, keyed by input name. */
+  fields?: FieldErrors;
   /** Single-use setup link, surfaced so an admin can relay it if email fails. */
   inviteUrl?: string;
   emailed?: boolean;
@@ -364,24 +367,54 @@ export async function impersonateOrg(orgId: string): Promise<AdminState> {
   redirect("/dashboard");
 }
 
-// ---- per-org gateway (WeVend) merchant credentials, encrypted at rest ----
+// ---- per-org gateway credentials, encrypted at rest ----
+//
+// Each charity connects its OWN gateway account so donations settle directly to
+// them. Supports WeVend (merchant or ISV auth) and Stripe.
 const posCredsSchema = z
   .object({
     orgId: z.string().min(1),
-    mid: z.string().min(3, "Merchant ID is required").max(40),
-    // WeVend has two auth shapes; exactly one identifier is required.
+    provider: z.enum(["wevend", "stripe"]),
+    // Stripe
+    secretKey: z.string().max(200).optional().or(z.literal("")),
+    stripeWebhookSecret: z.string().max(200).optional().or(z.literal("")),
+    // WeVend
+    mid: z.string().max(40).optional().or(z.literal("")),
     email: z.string().max(254).optional().or(z.literal("")),
     wvNumber: z.string().max(60).optional().or(z.literal("")),
-    password: z.string().min(8, "Merchant password must be at least 8 characters").max(200),
-    termId: z.string().min(1, "Terminal ID is required").max(20),
+    password: z.string().max(200).optional().or(z.literal("")),
+    termId: z.string().max(20).optional().or(z.literal("")),
   })
-  .refine((d) => !!d.email || !!d.wvNumber, {
-    message: "Enter either a merchant email or an organization (WV) number",
-    path: ["email"],
-  })
-  .refine((d) => !d.email || z.string().email().safeParse(d.email).success, {
-    message: "Enter a valid merchant email",
-    path: ["email"],
+  .superRefine((d, ctx) => {
+    if (d.provider === "stripe") {
+      if (!d.secretKey) {
+        ctx.addIssue({ code: "custom", path: ["secretKey"], message: "Stripe secret key is required" });
+      } else if (!/^sk_(test|live)_/.test(d.secretKey)) {
+        // Catch a publishable key here rather than at charge time, where it
+        // surfaces as an opaque Stripe error on a donor's payment.
+        ctx.addIssue({
+          code: "custom",
+          path: ["secretKey"],
+          message: "That doesn't look like a secret key — it should start with sk_test_ or sk_live_",
+        });
+      }
+      return;
+    }
+    if (!d.mid) ctx.addIssue({ code: "custom", path: ["mid"], message: "Merchant ID is required" });
+    if (!d.termId) ctx.addIssue({ code: "custom", path: ["termId"], message: "Terminal ID is required" });
+    if (!d.password || d.password.length < 8) {
+      ctx.addIssue({ code: "custom", path: ["password"], message: "Merchant password must be at least 8 characters" });
+    }
+    if (!d.email && !d.wvNumber) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["email"],
+        message: "Enter either a merchant email or an organization (WV) number",
+      });
+    }
+    if (d.email && !z.string().email().safeParse(d.email).success) {
+      ctx.addIssue({ code: "custom", path: ["email"], message: "Enter a valid merchant email" });
+    }
   });
 
 export async function savePosCredentials(
@@ -390,22 +423,35 @@ export async function savePosCredentials(
 ): Promise<AdminState> {
   const admin = await requirePlatformAdmin();
   const parsed = posCredsSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message };
+  if (!parsed.success) {
+    const { fields, message } = formErrors(parsed.error);
+    return { error: message, fields };
+  }
   const d = parsed.data;
 
   const { saveOrgGatewayCredentials } = await import("@/lib/payments/org-credentials");
   const { invalidateOrgProvider } = await import("@/lib/payments");
-  await saveOrgGatewayCredentials(d.orgId, {
-    provider: "wevend",
-    mid: d.mid,
-    email: d.email || undefined,
-    wvNumber: d.wvNumber || undefined,
-    password: d.password,
-    termId: d.termId,
-  });
+
+  await saveOrgGatewayCredentials(
+    d.orgId,
+    d.provider === "stripe"
+      ? {
+          provider: "stripe",
+          secretKey: d.secretKey as string,
+          webhookSecret: d.stripeWebhookSecret || undefined,
+        }
+      : {
+          provider: "wevend",
+          mid: d.mid as string,
+          email: d.email || undefined,
+          wvNumber: d.wvNumber || undefined,
+          password: d.password as string,
+          termId: d.termId as string,
+        }
+  );
   invalidateOrgProvider(d.orgId);
   // Never log/audit the credentials themselves — only that they changed.
-  await audit(admin.sub, d.orgId, "org.pos_credentials.set", "organization", d.orgId);
+  await audit(admin.sub, d.orgId, `org.pos_credentials.set.${d.provider}`, "organization", d.orgId);
   revalidatePath(`/admin/organizations/${d.orgId}/settings`);
   return { ok: true };
 }

@@ -95,6 +95,16 @@ export type HostedSaleInput = {
   /** Absolute URL the gateway returns the browser to (WeVend: must end in /response). */
   redirectUrl: string;
   metadata?: Record<string, string>;
+  /**
+   * Ask the gateway to retain the payment method for future off-session charges.
+   * Set for recurring gifts: KindPath's billing cron owns the schedule and charges
+   * the saved method each period, so the method must survive this one transaction.
+   */
+  savePaymentMethod?: boolean;
+  /** Prefills the gateway's receipt/contact field where supported. */
+  donorEmail?: string;
+  /** Shown to the donor on the gateway's own page. */
+  description?: string;
 };
 
 export type HostedSaleInit = {
@@ -113,6 +123,12 @@ export type ConfirmResult = {
   amount?: number;
   cardBrand?: string;
   last4?: string;
+  /**
+   * Token for charging this donor again off-session, when `savePaymentMethod` was
+   * requested and the gateway retained one. Distinct from `providerChargeRef`:
+   * WeVend reuses the transaction id as its token, Stripe returns "cus_x|pm_y".
+   */
+  providerToken?: string;
   failureCode?: string;
   failureMessage?: string;
 };

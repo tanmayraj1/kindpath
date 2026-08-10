@@ -33,19 +33,25 @@ export default async function OrgSettings({ params }: { params: { id: string } }
 
       <Card className="max-w-2xl">
         <CardHeader>
-          <CardTitle>Payment gateway (WeVend merchant)</CardTitle>
+          <CardTitle>Payment gateway</CardTitle>
           <p className="text-sm text-muted-foreground">
-            This organization&apos;s own WeVend merchant account. Encrypted at rest; takes effect
-            when the platform runs with PAYMENT_PROVIDER=wevend.
+            This organization&apos;s own gateway account, so donations settle directly to them.
+            Encrypted at rest, and used in preference to the platform default for every charge and
+            every payment page.
           </p>
         </CardHeader>
         <CardContent>
           <PosCredentialsForm
             orgId={org.id}
             configured={gateway.configured}
+            provider={gateway.provider}
+            error={gateway.error}
             midTail={gateway.midTail}
             email={gateway.email}
+            wvNumber={gateway.wvNumber}
             termId={gateway.termId}
+            keyTail={gateway.keyTail}
+            liveMode={gateway.liveMode}
           />
         </CardContent>
       </Card>

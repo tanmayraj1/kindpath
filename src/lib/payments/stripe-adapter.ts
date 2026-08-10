@@ -12,6 +12,9 @@ import type {
   RawWebhook,
   PaymentEvent,
   PaymentEventType,
+  HostedSaleInput,
+  HostedSaleInit,
+  ConfirmResult,
 } from "./types";
 
 const STRIPE_API = "https://api.stripe.com/v1";
@@ -173,6 +176,112 @@ export class StripeAdapter implements PaymentProvider {
   async cancelRecurring(_ref: RecurringRef): Promise<void> {
     // Nothing provider-side to cancel (see createRecurring).
     return;
+  }
+
+  // ---- hosted flow (Stripe Checkout) ----
+  //
+  // Deliberately Checkout rather than Elements. KindPath already has a verified
+  // hosted rail — signed state cookie, server-side confirm, and a charged-amount
+  // cross-check on /give/[slug]/response — built for WeVend. Checkout is the same
+  // shape (redirect out, come back with an id), so it reuses all of that instead
+  // of introducing a second payment path. It also needs no client-side Stripe.js,
+  // so it adds no dependency, no CSP change, and keeps PCI scope at SAQ A while
+  // giving donors Apple Pay and Google Pay for free.
+
+  async beginHostedSale(input: HostedSaleInput): Promise<HostedSaleInit> {
+    const cents = Math.round(input.money.amount * 100);
+    const params: Record<string, string> = {
+      mode: "payment",
+      // Stripe substitutes the real session id into these templates on redirect.
+      success_url: `${input.redirectUrl}?transactionId={CHECKOUT_SESSION_ID}&paymentOrderId={CHECKOUT_SESSION_ID}&success=1`,
+      cancel_url: `${input.redirectUrl}?cancelled=1`,
+      "line_items[0][quantity]": "1",
+      "line_items[0][price_data][currency]": input.money.currency.toLowerCase(),
+      "line_items[0][price_data][unit_amount]": String(cents),
+      "line_items[0][price_data][product_data][name]": input.description || "Donation",
+      "payment_intent_data[metadata][orgId]": input.orgId,
+      "metadata[orgId]": input.orgId,
+    };
+    if (input.donorEmail) params.customer_email = input.donorEmail;
+    if (input.orderId) params["metadata[orderId]"] = input.orderId;
+    for (const [k, v] of Object.entries(input.metadata ?? {})) {
+      params[`metadata[${k}]`] = v;
+    }
+
+    // Recurring gifts: KindPath's cron owns the schedule, so we don't create a
+    // Stripe Subscription — we just need the method retained for off-session use.
+    if (input.savePaymentMethod) {
+      params.customer_creation = "always";
+      params["payment_intent_data[setup_future_usage]"] = "off_session";
+    }
+
+    const res = await this.request<{ id: string; url: string }>(
+      "POST",
+      "/checkout/sessions",
+      params
+    );
+    if (!res.ok || !res.body.url) {
+      throw new Error(res.body.error?.message ?? "Stripe: could not start checkout");
+    }
+    return { paymentOrderId: res.body.id, redirectTo: res.body.url };
+  }
+
+  async confirmTransaction(sessionId: string): Promise<ConfirmResult> {
+    // Expanded so one call yields the charge (for card details) and the payment
+    // method (to save for recurring). The redirect's success flag is never trusted.
+    const qs =
+      "expand[]=payment_intent.latest_charge&expand[]=payment_intent.payment_method";
+    const res = await this.request<{
+      id: string;
+      payment_status: string;
+      amount_total: number;
+      currency: string;
+      customer?: string | { id: string };
+      payment_intent?: {
+        id: string;
+        latest_charge?: {
+          payment_method_details?: { card?: { brand?: string; last4?: string } };
+        };
+        payment_method?: { id: string };
+      };
+    }>("GET", `/checkout/sessions/${encodeURIComponent(sessionId)}?${qs}`);
+
+    if (!res.ok) {
+      return {
+        success: false,
+        providerChargeRef: "",
+        failureCode: res.body.error?.code ?? "session_lookup_failed",
+        failureMessage: res.body.error?.message ?? "Could not confirm the payment.",
+      };
+    }
+
+    const s = res.body;
+    if (s.payment_status !== "paid") {
+      return {
+        success: false,
+        providerChargeRef: s.payment_intent?.id ?? "",
+        paymentOrderId: s.id,
+        failureCode: `checkout_${s.payment_status}`,
+        failureMessage: "The payment was not completed.",
+      };
+    }
+
+    const card = s.payment_intent?.latest_charge?.payment_method_details?.card;
+    const customerId = typeof s.customer === "string" ? s.customer : s.customer?.id;
+    const pmId = s.payment_intent?.payment_method?.id;
+
+    return {
+      success: true,
+      // The PaymentIntent id is what refunds are issued against, so that — not the
+      // session id — is the charge reference we store.
+      providerChargeRef: s.payment_intent?.id ?? s.id,
+      paymentOrderId: s.id,
+      amount: s.amount_total / 100,
+      cardBrand: card?.brand,
+      last4: card?.last4,
+      // Matches the "cus_x|pm_y" shape charge() already understands.
+      providerToken: customerId && pmId ? `${customerId}|${pmId}` : undefined,
+    };
   }
 
   async refund(input: RefundInput): Promise<RefundResult> {

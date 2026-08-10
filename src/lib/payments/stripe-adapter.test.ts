@@ -224,3 +224,142 @@ describe("StripeAdapter.verifyWebhook", () => {
     ).rejects.toThrow(/unhandled event type/);
   });
 });
+
+// ---- hosted flow (Stripe Checkout) ----
+// KindPath reuses the hosted rail built for WeVend: redirect out, come back with
+// an id, confirm server-side. These guard the money-critical parts of that.
+
+describe("beginHostedSale (Checkout)", () => {
+  it("creates a session with the amount in cents and returns Stripe's URL", async () => {
+    const calls: { url: string; body: string }[] = [];
+    const fetchImpl = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(url), body: String(init?.body ?? "") });
+      return jsonResponse({ id: "cs_test_1", url: "https://checkout.stripe.com/c/pay/cs_test_1" });
+    }) as unknown as typeof fetch;
+
+    const res = await adapter(fetchImpl).beginHostedSale!({
+      orgId: "org_1",
+      money: { amount: 25.5, currency: "CAD" },
+      redirectUrl: "https://kindpath.app/give/x/response",
+      description: "Donation",
+    });
+
+    expect(res).toEqual({
+      paymentOrderId: "cs_test_1",
+      redirectTo: "https://checkout.stripe.com/c/pay/cs_test_1",
+    });
+    const body = decodeURIComponent(calls[0].body);
+    expect(calls[0].url).toContain("/checkout/sessions");
+    expect(body).toContain("line_items[0][price_data][unit_amount]=2550");
+    expect(body).toContain("mode=payment");
+    // Stripe substitutes the real id into this template on redirect.
+    expect(body).toContain("{CHECKOUT_SESSION_ID}");
+  });
+
+  it("only asks Stripe to retain the card when the gift is recurring", async () => {
+    const bodies: string[] = [];
+    const fetchImpl = vi.fn(async (_u: RequestInfo | URL, init?: RequestInit) => {
+      bodies.push(decodeURIComponent(String(init?.body ?? "")));
+      return jsonResponse({ id: "cs_1", url: "https://checkout.stripe.com/c/pay/cs_1" });
+    }) as unknown as typeof fetch;
+    const a = adapter(fetchImpl);
+
+    await a.beginHostedSale!({
+      orgId: "o",
+      money: { amount: 10, currency: "CAD" },
+      redirectUrl: "https://x/response",
+    });
+    expect(bodies[0]).not.toContain("setup_future_usage");
+
+    await a.beginHostedSale!({
+      orgId: "o",
+      money: { amount: 10, currency: "CAD" },
+      redirectUrl: "https://x/response",
+      savePaymentMethod: true,
+    });
+    // Without this the recurring cron would have no card to charge next month.
+    expect(bodies[1]).toContain("payment_intent_data[setup_future_usage]=off_session");
+    expect(bodies[1]).toContain("customer_creation=always");
+  });
+
+  it("throws rather than returning a broken redirect when Stripe rejects", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ error: { message: "No such price" } }, 400)
+    ) as unknown as typeof fetch;
+    await expect(
+      adapter(fetchImpl).beginHostedSale!({
+        orgId: "o",
+        money: { amount: 10, currency: "CAD" },
+        redirectUrl: "https://x/response",
+      })
+    ).rejects.toThrow(/No such price/);
+  });
+});
+
+describe("confirmTransaction (Checkout)", () => {
+  const paidSession = {
+    id: "cs_1",
+    payment_status: "paid",
+    amount_total: 5175,
+    currency: "cad",
+    customer: "cus_9",
+    payment_intent: {
+      id: "pi_9",
+      latest_charge: { payment_method_details: { card: { brand: "visa", last4: "4242" } } },
+      payment_method: { id: "pm_9" },
+    },
+  };
+
+  it("returns the PaymentIntent id as the charge ref, not the session id", async () => {
+    // Refunds are issued against the PaymentIntent — storing the session id would
+    // make every refund fail later.
+    const fetchImpl = vi.fn(async () => jsonResponse(paidSession)) as unknown as typeof fetch;
+    const r = await adapter(fetchImpl).confirmTransaction!("cs_1");
+    expect(r).toMatchObject({
+      success: true,
+      providerChargeRef: "pi_9",
+      paymentOrderId: "cs_1",
+      amount: 51.75,
+      cardBrand: "visa",
+      last4: "4242",
+      providerToken: "cus_9|pm_9",
+    });
+  });
+
+  it("reports the amount in major units so /response can cross-check it", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(paidSession)) as unknown as typeof fetch;
+    const r = await adapter(fetchImpl).confirmTransaction!("cs_1");
+    // The response page rejects the receipt if this doesn't match the intended
+    // amount, so a cents/dollars slip here would block every legitimate payment.
+    expect(r.amount).toBe(51.75);
+  });
+
+  it("treats an unpaid session as a failure and issues no token", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ ...paidSession, payment_status: "unpaid" })
+    ) as unknown as typeof fetch;
+    const r = await adapter(fetchImpl).confirmTransaction!("cs_1");
+    expect(r.success).toBe(false);
+    expect(r.failureCode).toBe("checkout_unpaid");
+    expect(r.providerToken).toBeUndefined();
+  });
+
+  it("omits providerToken when Stripe retained no reusable method", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ ...paidSession, customer: undefined, payment_intent: { id: "pi_9" } })
+    ) as unknown as typeof fetch;
+    const r = await adapter(fetchImpl).confirmTransaction!("cs_1");
+    expect(r.success).toBe(true);
+    // A synthesised token here would be charged next month and always decline.
+    expect(r.providerToken).toBeUndefined();
+  });
+
+  it("fails closed when the session can't be looked up", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ error: { code: "resource_missing", message: "No such session" } }, 404)
+    ) as unknown as typeof fetch;
+    const r = await adapter(fetchImpl).confirmTransaction!("cs_nope");
+    expect(r.success).toBe(false);
+    expect(r.failureCode).toBe("resource_missing");
+  });
+});

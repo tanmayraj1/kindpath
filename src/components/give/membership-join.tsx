@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useFormState } from "react-dom";
 import { Users, CreditCard, Lock, Loader2, AlertCircle, CheckCircle2, Check } from "lucide-react";
-import { authorizeCharge } from "@/app/give/[slug]/actions";
+import { authorizeCharge, beginHostedMembership } from "@/app/give/[slug]/actions";
 import { completeMembership, type MembershipState } from "@/app/join/[slug]/actions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,7 +18,8 @@ const PROVINCES = ["AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE", "
 const initial: MembershipState = {};
 const per: Record<string, string> = { weekly: "/wk", monthly: "/mo", quarterly: "/qtr", annual: "/yr" };
 
-export function MembershipJoin({ org, plans }: { org: Org; plans: Plan[] }) {
+export function MembershipJoin({
+  hosted = false, org, plans }: { org: Org; plans: Plan[]; hosted?: boolean }) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [planId, setPlanId] = useState(plans[0]?.id ?? "");
   const [chargeRef, setChargeRef] = useState("");
@@ -27,6 +28,26 @@ export function MembershipJoin({ org, plans }: { org: Org; plans: Plan[] }) {
   const [state, formAction] = useFormState(completeMembership, initial);
 
   const plan = plans.find((p) => p.id === planId);
+
+  /** Redirect gateways (Stripe Checkout, WeVend) take payment on their own page. */
+  async function payHosted() {
+    if (!plan) return;
+    setPayError(null);
+    setCharging(true);
+    const res = await beginHostedMembership({
+      slug: org.slug,
+      amount: plan.amount,
+      planId: plan.id,
+      frequency: "monthly",
+      description: `${plan.name} membership`,
+    });
+    if (res.ok) {
+      window.location.assign(res.redirectTo);
+    } else {
+      setCharging(false);
+      setPayError(res.message);
+    }
+  }
 
   async function pay() {
     if (!plan) return;
@@ -77,7 +98,7 @@ export function MembershipJoin({ org, plans }: { org: Org; plans: Plan[] }) {
                 </button>
               ))}
             </div>
-            <Button size="lg" className="w-full" disabled={!plan} onClick={() => setStep(2)}>
+            <Button size="lg" className="w-full" disabled={!plan} onClick={() => (hosted ? payHosted() : setStep(2))}>
               Continue
             </Button>
           </div>

@@ -1092,3 +1092,54 @@ export async function reissueReceipt(receiptId: string): Promise<ReceiptActionSt
   }
   return { error: outcome.error, ok: outcome.ok, serial: outcome.serial };
 }
+
+// ---------------- donor data rights (PIPEDA / Law 25) ----------------
+export type PrivacyState = { error?: string; ok?: boolean; message?: string };
+
+/**
+ * Erase a donor's identifying data at their request, on the org's behalf.
+ *
+ * Not a delete. The living record is scrubbed; donations and receipts are
+ * retained because the Income Tax Act requires it, and the receipt snapshots
+ * preserve the name and address each receipt was issued with.
+ */
+export async function anonymizeDonorRecord(donorId: string): Promise<PrivacyState> {
+  const session = await requireOrgUser();
+  const { anonymizeDonor } = await import("@/lib/privacy");
+
+  const result = await anonymizeDonor({
+    orgId: session.orgId,
+    donorId,
+    requestedBy: { type: "org_user", id: session.sub },
+    ip: clientIp(),
+  });
+  if ("error" in result) return { error: result.error };
+
+  revalidatePath("/dashboard/donors");
+  revalidatePath(`/dashboard/donors/${donorId}`);
+  return {
+    ok: true,
+    message:
+      `Personal details removed. ${result.receiptsRetained} receipt(s) and ` +
+      `${result.donationsRetained} donation(s) retained for CRA records.`,
+  };
+}
+
+/** A donor's own data, for an access request they made to the organization. */
+export async function exportDonorRecord(donorId: string): Promise<PrivacyState & { json?: string }> {
+  const session = await requireOrgUser();
+  const { buildDonorExport } = await import("@/lib/privacy");
+
+  const data = await buildDonorExport(session.orgId, donorId);
+  if (!data) return { error: "That donor record no longer exists." };
+
+  await audit({
+    actor: { type: "org_user", id: session.sub },
+    orgId: session.orgId,
+    action: "donor.data_exported_by_org",
+    entityType: "donor",
+    entityId: donorId,
+    ip: clientIp(),
+  });
+  return { ok: true, json: JSON.stringify(data, null, 2) };
+}

@@ -6,7 +6,18 @@ import crypto from "node:crypto";
  * gateway; read back on the /response return page. HMAC-signed so the
  * amount/org/fund can't be tampered with while the donor is off-site.
  */
+/**
+ * What the donor was buying before they left for the gateway.
+ *
+ * Carried through the redirect so /response knows which completion form to show.
+ * Ticket and membership purchases previously had no hosted path at all — they
+ * called authorizeCharge with a mock placeholder token, so with a real gateway
+ * configured they ran a demo code path.
+ */
+export type HostedKind = "donation" | "ticket" | "membership";
+
 export type HostedState = {
+  kind?: HostedKind; // absent on pre-existing cookies → treated as "donation"
   orgId: string;
   slug: string;
   amount: number; // effective amount (incl. cover-the-fees), major units
@@ -14,6 +25,12 @@ export type HostedState = {
   fundId?: string;
   campaignId?: string;
   frequency: "one_time" | "monthly";
+  // ticket purchases
+  eventId?: string;
+  ticketTypeId?: string;
+  quantity?: number;
+  // membership joins
+  planId?: string;
   paymentOrderId: string; // must match the gateway's return params
   exp: number; // unix seconds
 };

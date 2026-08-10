@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DonorEditForm } from "@/components/dashboard/donor-edit-form";
+import { DonorPrivacyActions } from "@/components/dashboard/donor-privacy-actions";
 import { requireOrgUser } from "@/lib/auth/guards";
 import { getOrgDonorDetail } from "@/lib/queries/org";
 import { formatCAD } from "@/lib/utils";
@@ -98,6 +99,19 @@ export default async function DonorDetailPage({ params }: { params: { id: string
                   }}
                 />
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Privacy requests</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <DonorPrivacyActions
+                donorId={data.donor.id}
+                donorName={data.donor.name}
+                anonymized={!!data.donor.anonymizedAt}
+              />
             </CardContent>
           </Card>
 
