@@ -38,6 +38,25 @@ function adapter(fetchImpl: typeof fetch) {
 }
 
 describe("WeVendAdapter config", () => {
+  it("accepts a base URL given with or without the /api suffix", async () => {
+    // WeVend's FAQ quotes the base as ".../api"; their endpoint tables quote paths
+    // that already start with "/api". Taken together that yields "/api/api/...".
+    for (const base of ["https://wepay.wevend.dev", "https://wepay.wevend.dev/api", "https://wepay.wevend.dev/api/"]) {
+      const { impl, calls } = router({
+        "/api/auth/token": () => AUTH_OK,
+        "/api/payments/sale": () => jsonResponse({ success: true, data: { paymentOrderId: "po" } }),
+      });
+      const a = new WeVendAdapter({ ...CONFIG, baseUrl: base, fetchImpl: impl });
+      await a.beginHostedSale({
+        orgId: "o",
+        money: { amount: 1, currency: "CAD" },
+        redirectUrl: "https://x/response",
+      });
+      const sale = calls.find((c) => c.url.includes("/payments/sale"))!;
+      expect(sale.url, `base ${base}`).toBe("https://wepay.wevend.dev/api/payments/sale");
+    }
+  });
+
   it("throws without required credentials", () => {
     expect(() => new WeVendAdapter({ baseUrl: "", fetchImpl: vi.fn() as unknown as typeof fetch })).toThrow(
       /requires WEVEND/
@@ -161,6 +180,47 @@ describe("confirmTransaction", () => {
     });
   });
 
+  it("marks an approved sale complete, so WeVend sees the gift as fulfilled", async () => {
+    const { impl, calls } = router({
+      "/api/auth/token": () => AUTH_OK,
+      "/api/payments/get-transaction/txn_c": () =>
+        jsonResponse({ success: true, data: { respCode: "000", amount: "10.00" } }),
+      "/api/payments/mark-transaction-complete": () =>
+        jsonResponse({ success: true, data: { error: false } }),
+    });
+    await adapter(impl).confirmTransaction("txn_c");
+    const mark = calls.find((c) => c.url.endsWith("/api/payments/mark-transaction-complete"));
+    expect(mark, "an approved sale must be marked complete").toBeDefined();
+    expect(JSON.parse(String(mark!.init?.body))).toEqual({ transactionId: "txn_c" });
+  });
+
+  it("does NOT mark a declined transaction complete", async () => {
+    const { impl, calls } = router({
+      "/api/auth/token": () => AUTH_OK,
+      "/api/payments/get-transaction/txn_d": () =>
+        jsonResponse({ success: true, data: { respCode: "005" } }),
+      "/api/payments/mark-transaction-complete": () => jsonResponse({ success: true }),
+    });
+    await adapter(impl).confirmTransaction("txn_d");
+    expect(calls.some((c) => c.url.includes("mark-transaction-complete"))).toBe(false);
+  });
+
+  it("still reports success when marking complete fails", async () => {
+    // The card is charged and the receipt is issued off this result. A bookkeeping
+    // call failing afterwards must never present a completed gift as a failure.
+    const { impl } = router({
+      "/api/auth/token": () => AUTH_OK,
+      "/api/payments/get-transaction/txn_e": () =>
+        jsonResponse({ success: true, data: { respCode: "000", amount: "25.00" } }),
+      "/api/payments/mark-transaction-complete": () => {
+        throw new Error("gateway timeout");
+      },
+    });
+    const r = await adapter(impl).confirmTransaction("txn_e");
+    expect(r.success).toBe(true);
+    expect(r.amount).toBe(25);
+  });
+
   it("treats a non-000 respCode as a decline", async () => {
     const { impl } = router({
       "/api/auth/token": () => AUTH_OK,
@@ -226,6 +286,24 @@ describe("refund + void", () => {
     expect(r).toEqual({ success: true, providerRefundRef: "txn_refund" });
     const body = JSON.parse(String(calls.find((c) => c.url.endsWith("/api/payments/refund-with-token"))!.init?.body));
     expect(body).toMatchObject({ transactionId: "txn_orig", amount: "1200" });
+    // v3.2.2 lists all six as required; omitting any is rejected by the gateway.
+    for (const field of ["amount", "orderId", "mid", "termId", "transactionId", "redirectUrl"]) {
+      expect(body[field], `refund requires ${field}`).toBeTruthy();
+    }
+  });
+
+  it("sends a redirectUrl of ours, not the gateway's own origin", async () => {
+    // redirectUrl is required even on this server-to-server call. Pointing it at
+    // WeVend's API base named the gateway as the merchant's return address.
+    const { impl, calls } = router({
+      "/api/auth/token": () => AUTH_OK,
+      "/api/payments/refund-with-token": () =>
+        jsonResponse({ success: true, data: { returnCode: "000", transactionId: "t" } }),
+    });
+    const a = new WeVendAdapter({ ...CONFIG, appUrl: "https://kindpath.example", fetchImpl: impl });
+    await a.refund({ orgId: "o", providerChargeRef: "txn_orig", idempotencyKey: "k" });
+    const body = JSON.parse(String(calls.find((c) => c.url.includes("refund-with-token"))!.init?.body));
+    expect(new URL(body.redirectUrl).origin).toBe("https://kindpath.example");
   });
 
   it("voids by transactionId", async () => {

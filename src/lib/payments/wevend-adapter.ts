@@ -16,7 +16,7 @@ import type {
 } from "./types";
 
 /**
- * WeVend WePay API Gateway adapter (spec v2.2.0).
+ * WeVend WePay API Gateway adapter (spec v3.2.2).
  *
  * WeVend is a HOSTED-IFRAME gateway, not a server-side charge API:
  *  - One-time gift: POST /payments/sale → paymentOrderId → redirect the donor to
@@ -28,8 +28,18 @@ import type {
  *  - Refund/void are synchronous. (refund / voidTransaction)
  *  - No webhooks: reconciliation is the return URL + get-transaction polling.
  *
- * Auth: POST /auth/token {mid,email,password} → 7-day accessToken + refreshToken.
- * We cache the token per adapter instance and re-auth on 401.
+ * Auth: JWT bearer, 7-day expiry, single-use refresh tokens. Either ORG mode
+ * (wvNumber + password → /auth/org-token; one "Global Token" acts across every
+ * merchant in the organization, so `mid` must be sent on each payment call) or
+ * MERCHANT mode (mid + email + password → /auth/token). WeVend's guidance is to
+ * default to the organization Global Token, which is what org mode does. We cache
+ * the token per adapter instance and re-auth on 401.
+ *
+ * Environments (v3.2.2 p.125 + WeVend integration FAQ):
+ *   dev   API https://wepay.wevend.dev   iframe https://iframe.wevend.dev  (CA)
+ *   prod  API https://wepay.wevend.pro   iframe https://iframe.wevend.pro  (CA)
+ * The gateway is hosted by WeVend; there is nothing to deploy on our side, and
+ * the `localhost:3000` in their docs is only their local example.
  *
  * Multi-tenant note: each KindPath org maps to a WeVend merchant (mid/email/
  * password/termId). Pass those per-org via the constructor; env vars are the
@@ -47,6 +57,12 @@ export type WeVendConfig = {
   wvNumber?: string;
   email?: string;
   password: string;
+  /**
+   * Absolute URL WeVend echoes back on server-to-server calls. It is a required
+   * field on refund/sale-with-token even though those return synchronously and
+   * never redirect a browser, so it must still be one of OUR urls.
+   */
+  appUrl?: string;
 };
 
 // WeVend returnCode/respCode values that mean "approved".
@@ -70,8 +86,9 @@ export class WeVendAdapter implements PaymentProvider {
 
   constructor(opts?: Partial<WeVendConfig> & { fetchImpl?: typeof fetch }) {
     this.cfg = {
-      baseUrl: (opts?.baseUrl ?? process.env.WEVEND_BASE_URL ?? "").replace(/\/$/, ""),
+      baseUrl: WeVendAdapter.normalizeBase(opts?.baseUrl ?? process.env.WEVEND_BASE_URL ?? ""),
       iframeUrl: (opts?.iframeUrl ?? process.env.WEVEND_IFRAME_URL ?? "").replace(/\/$/, ""),
+      appUrl: (opts?.appUrl ?? process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, ""),
       mid: opts?.mid ?? process.env.WEVEND_MID ?? "",
       termId: opts?.termId ?? process.env.WEVEND_TERM_ID ?? "",
       wvNumber: opts?.wvNumber ?? process.env.WEVEND_WV_NUMBER ?? "",
@@ -92,6 +109,26 @@ export class WeVendAdapter implements PaymentProvider {
   }
 
   // ---------- helpers ----------
+
+  /**
+   * WeVend's own FAQ gives the base URL as ".../api" while their endpoint tables
+   * give paths that already start with "/api". Taking either at face value would
+   * produce "/api/api/payments/sale", so normalize to the origin and let the
+   * paths below own the "/api" prefix.
+   */
+  private static normalizeBase(raw: string): string {
+    return raw.trim().replace(/\/+$/, "").replace(/\/api$/i, "");
+  }
+
+  /**
+   * WeVend requires a redirectUrl on refund and sale-with-token, which are pure
+   * server-to-server calls with no browser to redirect. It must still be a real
+   * URL of ours — pointing it at WeVend's own API base (as this once did) named
+   * the gateway as the merchant's return address.
+   */
+  private get serverCallbackUrl(): string {
+    return `${this.cfg.appUrl || "https://kindpath.ca"}/api/payments/wevend/response`;
+  }
 
   /** Amount → integer cents as a string (WeVend takes amounts in cents, as strings). */
   private toCents(amount: number): string {
@@ -199,6 +236,14 @@ export class WeVendAdapter implements PaymentProvider {
     const d = body.data ?? {};
     const ok = body.success === true && WeVendAdapter.approved(d.respCode);
     const amount = d.amount != null && d.amount !== "" ? Number(d.amount) : undefined;
+
+    // WeVend expects a sale to be marked complete once the payer has received what
+    // they paid for. For a donation that is true the instant the charge approves,
+    // so there is no state in which we would want to hold it back. Best-effort:
+    // the donation is already recorded and receipted off the confirmation above,
+    // and a failure here must not turn a successful gift into an error page.
+    if (ok) await this.markTransactionComplete(transactionId);
+
     return {
       success: ok,
       providerChargeRef: transactionId,
@@ -209,6 +254,19 @@ export class WeVendAdapter implements PaymentProvider {
       failureCode: ok ? undefined : String(d.respCode ?? "declined"),
       failureMessage: ok ? undefined : d.detailRespData ?? "The payment was not approved.",
     };
+  }
+
+  /**
+   * Marks a sale as fulfilled in WeVend's records. Deliberately swallows failures:
+   * the money has already moved and the receipt is already issued by the time this
+   * runs, so raising here would report a completed gift as a failure to the donor.
+   */
+  private async markTransactionComplete(transactionId: string): Promise<void> {
+    try {
+      await this.authed("POST", "/api/payments/mark-transaction-complete", { transactionId });
+    } catch {
+      // Non-fatal by design — see above.
+    }
   }
 
   // ---------- tokenized / recurring charge (synchronous) ----------
@@ -223,7 +281,7 @@ export class WeVendAdapter implements PaymentProvider {
         orderId: this.orderId(input.metadata?.orderId),
         mid: this.cfg.mid,
         termId: this.cfg.termId,
-        redirectUrl: `${this.cfg.baseUrl}/response`,
+        redirectUrl: this.serverCallbackUrl,
         transactionId: input.providerToken,
       }
     );
@@ -239,6 +297,16 @@ export class WeVendAdapter implements PaymentProvider {
     return { success: true, providerChargeRef: body.data?.transactionId ?? "" };
   }
 
+  /**
+   * Refund an already-settled transaction. Partial refunds are supported — the
+   * amount is explicit — so this is NOT interchangeable with voidTransaction():
+   * a void only works before settlement, and a completion cannot be voided at all.
+   *
+   * `orderId` here is a fresh merchant reference for the refund transaction, not
+   * the original sale's. WeVend's spec lists it as required without saying which,
+   * and their response returns a new transaction record, which reads as "new
+   * reference". Confirm with WeVend before the first live refund.
+   */
   async refund(input: RefundInput): Promise<RefundResult> {
     const body = await this.authed<{ returnCode?: string | number; transactionId?: string }>(
       "POST",
@@ -248,7 +316,7 @@ export class WeVendAdapter implements PaymentProvider {
         orderId: this.orderId(),
         mid: this.cfg.mid,
         termId: this.cfg.termId,
-        redirectUrl: `${this.cfg.baseUrl}/response`,
+        redirectUrl: this.serverCallbackUrl,
         transactionId: input.providerChargeRef,
       }
     );

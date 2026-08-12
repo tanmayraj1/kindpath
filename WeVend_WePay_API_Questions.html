@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WeVend WePay API Gateway — Integration FAQ</title>
+<style>
+  :root {
+    --navy: #0b2d4a;
+    --navy-dark: #072033;
+    --accent: #ff6a00;
+    --accent-dark: #d95900;
+    --bg: #f4f6f9;
+    --card: #ffffff;
+    --border: #e1e6ed;
+    --text: #1c2733;
+    --text-muted: #5b6b7b;
+    --code-bg: #0b2d4a0d;
+    --green: #1a8f5e;
+    --red: #c23b3b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+  }
+  header {
+    background: linear-gradient(135deg, var(--navy) 0%, var(--navy-dark) 100%);
+    color: #fff;
+    padding: 28px 24px 22px;
+  }
+  header .inner {
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  header h1 {
+    margin: 0 0 4px;
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  header p {
+    margin: 0;
+    color: #b9cbdc;
+    font-size: 0.92rem;
+  }
+  .search-wrap {
+    max-width: 1100px;
+    margin: -18px auto 0;
+    padding: 0 24px;
+    position: relative;
+    z-index: 5;
+  }
+  #searchBox {
+    width: 100%;
+    padding: 14px 18px 14px 44px;
+    font-size: 0.98rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 6px 18px rgba(11,45,74,0.12);
+    outline: none;
+    background: var(--card) url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="%235b6b7b" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>') no-repeat 14px center;
+    color: var(--text);
+  }
+  #searchBox:focus {
+    border-color: var(--accent);
+    box-shadow: 0 6px 18px rgba(255,106,0,0.18);
+  }
+  main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 28px 24px 60px;
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 24px;
+  }
+  nav.toc {
+    position: sticky;
+    top: 20px;
+    align-self: start;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    height: fit-content;
+  }
+  nav.toc .toc-title {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin: 0 0 10px 4px;
+    font-weight: 700;
+  }
+  nav.toc a {
+    display: block;
+    padding: 7px 10px;
+    border-radius: 6px;
+    color: var(--text);
+    text-decoration: none;
+    font-size: 0.87rem;
+    margin-bottom: 2px;
+  }
+  nav.toc a:hover { background: var(--bg); }
+  nav.toc a.active { background: var(--navy); color: #fff; }
+
+  .topic {
+    margin-bottom: 34px;
+    scroll-margin-top: 16px;
+  }
+  .topic-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .topic-icon {
+    font-size: 1.3rem;
+    line-height: 1;
+  }
+  .topic-header h2 {
+    margin: 0;
+    font-size: 1.15rem;
+    color: var(--navy);
+  }
+  .faq-item {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 10px;
+    overflow: hidden;
+  }
+  .faq-q {
+    padding: 14px 18px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+  .faq-q:hover { background: #fafbfc; }
+  .faq-q .chevron {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    color: var(--text-muted);
+    transition: transform 0.15s ease;
+  }
+  .faq-item.open .faq-q .chevron { transform: rotate(180deg); }
+  .faq-a {
+    display: none;
+    padding: 0 18px 16px;
+    color: var(--text);
+    font-size: 0.92rem;
+  }
+  .faq-item.open .faq-a { display: block; }
+  .faq-a p { margin: 0 0 10px; }
+  .faq-a p:last-child { margin-bottom: 0; }
+  .faq-a ul { margin: 6px 0 10px; padding-left: 20px; }
+  .faq-a li { margin-bottom: 4px; }
+  .tag {
+    display: inline-block;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 2px 8px;
+    border-radius: 20px;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .tag.indoc { background: #eef4fb; color: var(--navy); }
+  .source-cite {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-style: italic;
+    margin-bottom: 10px !important;
+  }
+  code, .mono {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    background: var(--code-bg);
+    padding: 2px 6px;
+    border-radius: 5px;
+    font-size: 0.88em;
+    color: var(--navy);
+  }
+  table.mini {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 8px 0;
+    font-size: 0.88rem;
+  }
+  table.mini th, table.mini td {
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    text-align: left;
+  }
+  table.mini th {
+    background: var(--bg);
+    font-weight: 700;
+  }
+  .callout {
+    background: #fff7ec;
+    border: 1px solid #ffdca8;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.88rem;
+    margin-top: 8px;
+  }
+  .callout.info {
+    background: #eef4fb;
+    border-color: #c9dcf0;
+  }
+
+  /* Response code lookup */
+  #codeSearch {
+    width: 100%;
+    padding: 12px 16px 12px 44px;
+    font-size: 0.95rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 12px;
+    background: #fff url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="%235b6b7b" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>') no-repeat 14px center;
+  }
+  .code-table-wrap {
+    max-height: 480px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--card);
+  }
+  table.codes {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.87rem;
+  }
+  table.codes thead th {
+    position: sticky;
+    top: 0;
+    background: var(--navy);
+    color: #fff;
+    text-align: left;
+    padding: 10px 14px;
+    z-index: 2;
+  }
+  table.codes td {
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  table.codes td.code-num {
+    font-family: Consolas, monospace;
+    font-weight: 700;
+    color: var(--navy);
+    white-space: nowrap;
+  }
+  table.codes tr.approve td.code-num { color: var(--green); }
+  table.codes tr:hover { background: #fafbfc; }
+  .code-count {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+  .no-results {
+    text-align: center;
+    padding: 30px;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    display: none;
+  }
+  footer {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    padding: 20px;
+  }
+  @media (max-width: 800px) {
+    .layout { grid-template-columns: 1fr; }
+    nav.toc { position: static; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="inner">
+    <h1>WeVend WePay API Gateway — Integration FAQ</h1>
+    <p>Troubleshooting reference for developers integrating with the WePay API Gateway v3.2.2. Answers combine official documentation and clarifications confirmed by WeVend's engineering team.</p>
+  </div>
+</header>
+
+<div class="search-wrap">
+  <input type="text" id="searchBox" placeholder="Search all questions (e.g. base URL, test card, token, claim email)...">
+</div>
+
+<main>
+  <div class="layout">
+    <nav class="toc" id="toc">
+      <div class="toc-title">Topics</div>
+      <a href="#env">Environment URLs</a>
+      <a href="#auth">Authentication &amp; Tokens</a>
+      <a href="#sandbox">Sandbox / Test Merchant</a>
+      <a href="#testdata">Test Cards &amp; Data</a>
+      <a href="#voidrefund">Void &amp; Refunds</a>
+      <a href="#hosting">Hosting &amp; Deployment</a>
+      <a href="#codes">Fiserv Response Codes</a>
+    </nav>
+
+    <div id="content">
+
+      <!-- ENVIRONMENT URLS -->
+      <section class="topic" id="env">
+        <div class="topic-header">
+          <span class="topic-icon">🌐</span>
+          <h2>Environment URLs</h2>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">What is the API Gateway base URL for development?<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></div>
+          <div class="faq-a">
+            <p><code>https://wepay.wevend.dev/api</code></p>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">What is the API Gateway base URL for Production?<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></div>
+          <div class="faq-a">
+            <p><code>https://wepay.wevend.pro/api</code></p>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">What is the frontend URL used for merchant claim / login?<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></div>
+          <div class="faq-a">
+            <p>Dev: <code>https://wepay.wevend.dev/claim</code></p>
+            <p>This URL is included directly in the merchant claim email sent by WeVend — you don't need to construct it yourself. Production follows the same <code>.pro</code> pattern as the API base URL.</p>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">What are the iFrame base URLs for card entry (Apple Pay / Google Pay)?<span class="tag indoc">In doc</span><svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></div>
+          <div class="faq-a">
+            <p class="source-cite">Source: WeVend WePay API Gateway v3.2.2, p.125 — Additional Information / iFrame Base URLs</p>
+            <table class="mini">
+              <thead><tr><th>Region</th><th>DEV</th><th>Production</th></tr></thead>
+              <tbody>
+                <tr><td>Canada</td><td><code>iframe.wevend.dev</code></td><td><code>iframe.wevend.pro</code></td></tr>
+                <tr><td>US</td><td><code>iframe-us.wevend.dev</code></td><td><code>iframe-us.wevend.pro</code></td></tr>
+              </tbody>
+            </table>
+            <div class="callout info">The US Dev URL is correct for Apple Pay integration.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- AUTH -->
+      <section class="topic" id="auth">
+        <div class="topic-header">
+          <span class="topic-icon">🔐</span>
+          <h2>Authentication &amp; Tokens</h2>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">For payment endpoints, do I need a merchant access token or an admin/organization token?<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></div>
+          <div class="faq-a">
+            <p>Payment endpoints accept <strong>either</strong> a merchant access token or an organization <strong>Global Token</strong>, depending on whether the Global Token feature is enabled on the merchant's organization.</p>
+            <div class="callout">For your integration, assume the Global Token feature <strong>will be enabled</strong> — default to using the organization global access token, not the individual merchant token.</div>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">Where do merchants and admins retrieve their access tokens?<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></div>
+          <div class="faq-a">
+            <ul>
+              <li>After claiming their account and logging in, a merchant can view and manage their own <strong>merchant access tokens</strong> in the WePay portal.</li>
+              <li>If the organization has <strong>Global Token</strong> enabled, the organization's global access token is viewable in the WePay admin portal (admin credentials) or retrievable via the appropriate API.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">Token expiry and refresh behavior?<span class="tag indoc">In doc</span><svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></div>
+          <div class="faq-a">
+            <p class="source-cite">Source: WeVend WePay API Gateway v3.2.2 — Authentication overview</p>
+            <p>Authentication uses JWT Bearer Tokens with a 7-day expiry. Refresh tokens are single-use.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- SANDBOX -->
+      <section class="topic" id="sandbox">
+        <div class="topic-header">
+          <span class="topic-icon">🧪</span>
+          <h2>Sandbox / Test Merchant Setup</h2>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">How do I get a test merchant (sandbox), test MID, and test terminal ID?<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></div>
+          <div class="faq-a">
+            <p><code>/api/merchants/admin/register</code> is admin-only, so you cannot self-register a test merchant. The process is:</p>
+            <ul>
+              <li>You provide WeVend with the email address where the merchant claim email should be sent.</li>
+              <li>WeVend registers the test merchant in WePay (US country) and provides a test MID and test terminal ID (<code>termId</code>).</li>
+              <li>The designated contact receives a claim email with a registration code.</li>
+              <li>The merchant completes the claim process and sets a password.</li>
+              <li>After login, the merchant can view/manage merchant access tokens (or the org's Global Token, if enabled — see <a href="#auth">Authentication</a>).</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- TEST DATA -->
+      <section class="topic" id="testdata">
+        <div class="topic-header">
+          <span class="topic-icon">💳</span>
+          <h2>Test Cards &amp; Data</h2>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">What test cards are available for sale / pre-auth flows?<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></div>
+          <div class="faq-a">
+            <table class="mini">
+              <thead><tr><th>Scenario</th><th>PAN</th><th>Expiry</th></tr></thead>
+              <tbody>
+                <tr><td>Approved transaction</td><td><code>4111111111111111</code></td><td>Any valid future date</td></tr>
+                <tr><td>Expired card</td><td>Any PAN</td><td>Any past date, e.g. <code>01/2020</code></td></tr>
+              </tbody>
+            </table>
+            <div class="callout">No test cards are currently available for other decline/failure scenarios (e.g. insufficient funds, do-not-honor). If you need to test those response codes, request them from WeVend, or use the <a href="#codes">Fiserv response code table</a> for reference.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VOID & REFUNDS -->
+      <section class="topic" id="voidrefund">
+        <div class="topic-header">
+          <span class="topic-icon">↩️</span>
+          <h2>Void &amp; Refunds</h2>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">What's the difference between voiding and refunding a transaction?<span class="tag indoc">In doc</span><svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></div>
+          <div class="faq-a">
+            <p class="source-cite">Source: WeVend WePay API Gateway v3.2.2, p.72–79 — /api/payments/void &amp; /api/payments/refund-with-token</p>
+            <table class="mini">
+              <thead><tr><th>Stage</th><th>Action available</th></tr></thead>
+              <tbody>
+                <tr><td>Sale / Pre-Auth (not yet settled)</td><td>Void</td></tr>
+                <tr><td>Completion (captured/settled)</td><td>Refund only — void is not available</td></tr>
+                <tr><td>Dispute / chargeback</td><td>Not covered by this API</td></tr>
+              </tbody>
+            </table>
+            <div class="callout info">A <strong>void</strong> cancels a Sale or Pre-Auth before it settles. Once a transaction has been completed/captured, you can no longer void it — a <strong>refund</strong> is the only option.</div>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">How do I void a transaction?<span class="tag indoc">In doc</span><svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></div>
+          <div class="faq-a">
+            <p class="source-cite">Source: WeVend WePay API Gateway v3.2.2, p.72–73 — /api/payments/void</p>
+            <p>Call <code>POST /api/payments/void</code> with just the <code>transactionId</code> of the Sale or Pre-Auth you want to cancel.</p>
+            <ul>
+              <li>You cannot void a <strong>Completion</strong> transaction.</li>
+              <li>The response returns a <strong>new transaction record</strong> for the void itself, with its own <code>transactionId</code>, linked back to the original via <code>paymentOrderId</code>.</li>
+            </ul>
+            <div class="callout">Common use case: if a transaction fails AVS (Address Verification) checks, void it using the <code>transactionId</code> from that failed attempt.</div>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">How do I refund a transaction?<span class="tag indoc">In doc</span><svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></div>
+          <div class="faq-a">
+            <p class="source-cite">Source: WeVend WePay API Gateway v3.2.2, p.78–79 — /api/payments/refund-with-token</p>
+            <p>Call <code>POST /api/payments/refund-with-token</code> for a Sale or completed Pre-Auth. Required fields: <code>amount</code>, <code>orderId</code>, <code>mid</code>, <code>termId</code>, <code>transactionId</code>, <code>redirectUrl</code>.</p>
+            <div class="callout info">Refunds support a specific <code>amount</code> field — meaning <strong>partial refunds</strong> are possible, not just full reversals.</div>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">Does the API support disputes or chargebacks?<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></div>
+          <div class="faq-a">
+            <p>No — the documentation only covers merchant-initiated void and refund actions. Dispute intake, chargeback workflows, and representment are not part of this API and would need to be confirmed directly with WeVend.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- HOSTING -->
+      <section class="topic" id="hosting">
+        <div class="topic-header">
+          <span class="topic-icon">☁️</span>
+          <h2>Hosting &amp; Deployment</h2>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">Do we need to deploy the API Gateway ourselves?<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></div>
+          <div class="faq-a">
+            <p>No. The API Gateway is <strong>fully hosted and managed by WeVend</strong>. No deployment is required on the integrator's side.</p>
+            <div class="callout info">The <code>localhost:3000</code> URL shown in the documentation is only a local-development example — it doesn't represent anything you need to host.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- RESPONSE CODES -->
+      <section class="topic" id="codes">
+        <div class="topic-header">
+          <span class="topic-icon">📟</span>
+          <h2>Fiserv Response Codes</h2>
+        </div>
+        <p style="font-size:0.9rem; color:var(--text-muted); margin-top:-4px;">Full response code reference from <em>Fiserv Response Codes 2.pdf</em> (Appendix A). Search by code number or keyword (e.g. "expired", "insufficient", "fraud").</p>
+        <input type="text" id="codeSearch" placeholder="Search response codes (e.g. 116, insufficient funds, expired card)...">
+        <div class="code-count" id="codeCount"></div>
+        <div class="code-table-wrap">
+          <table class="codes">
+            <thead><tr><th style="width:90px;">Code</th><th>Description</th></tr></thead>
+            <tbody id="codeTableBody"></tbody>
+          </table>
+          <div class="no-results" id="noCodeResults">No matching response codes.</div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</main>
+
+<footer>
+  Internal reference — WeVend WePay API Gateway v3.2.2 &amp; Fiserv Response Codes (© 2024 Fiserv, Inc. or its affiliates). Compiled for integration troubleshooting.
+</footer>
+
+<script>
+  // Accordion toggle
+  document.querySelectorAll('.faq-q').forEach(function(q) {
+    q.addEventListener('click', function() {
+      q.parentElement.classList.toggle('open');
+    });
+  });
+
+  // Smooth scroll + active TOC highlight
+  document.querySelectorAll('nav.toc a').forEach(function(link) {
+    link.addEventListener('click', function(e) {
+      e.preventDefault();
+      var target = document.querySelector(link.getAttribute('href'));
+      if (target) target.scrollIntoView({behavior: 'smooth', block: 'start'});
+    });
+  });
+
+  // Global search across FAQ items
+  var searchBox = document.getElementById('searchBox');
+  searchBox.addEventListener('input', function() {
+    var term = searchBox.value.trim().toLowerCase();
+    document.querySelectorAll('.topic').forEach(function(topic) {
+      var anyVisible = false;
+      topic.querySelectorAll('.faq-item').forEach(function(item) {
+        var text = item.textContent.toLowerCase();
+        var match = term === '' || text.indexOf(term) !== -1;
+        item.style.display = match ? '' : 'none';
+        if (match && term !== '') item.classList.add('open');
+        if (term === '') item.classList.remove('open');
+        if (match) anyVisible = true;
+      });
+      if (topic.id === 'codes') {
+        topic.style.display = '';
+      } else {
+        topic.style.display = anyVisible ? '' : 'none';
+      }
+    });
+  });
+
+  // ---- Fiserv Response Codes data ----
+  var RESPONSE_CODES = [
+    ["000","Approve"],
+    ["001","Schema Validation Error"],
+    ["002","Approve for partial amount"],
+    ["003","Approve VIP"],
+    ["100","Do not honor"],
+    ["101","Expired card"],
+    ["102","Suspected fraud"],
+    ["103","Unable to process TeleCheck recurring transaction with this payment type (not associated with insufficient or uncollected funds)"],
+    ["104","Restricted card"],
+    ["105","Call acquirer's security department"],
+    ["106","Allowable PIN tries exceeded"],
+    ["107","Call for authorization"],
+    ["108","Refer to issuer's special conditions"],
+    ["109","Invalid merchant. The merchant is not in the merchant database or the merchant is not permitted to use this particular card"],
+    ["110","Invalid amount"],
+    ["111","Invalid Host Totals Date"],
+    ["112","DES Encryption not allowed from the device / terminal"],
+    ["113","Host Totals are Incomplete"],
+    ["114","Invalid account type"],
+    ["115","Invalid HIP Amount"],
+    ["116","Not sufficient funds"],
+    ["117","Incorrect PIN or PIN length error"],
+    ["118","No card record"],
+    ["119","Transaction not permitted to cardholder"],
+    ["120","Transaction not permitted to terminal"],
+    ["121","Exceeds withdrawal amount limit"],
+    ["122","Security violation"],
+    ["123","Exceeds withdrawal frequency limit"],
+    ["124","Violation of law"],
+    ["129","Suspected counterfeit card"],
+    ["130","Invalid terminal"],
+    ["131","Invalid account number"],
+    ["132","Unmatched card expiry date"],
+    ["133","The TPP ID was not found"],
+    ["134","Not sufficient funds"],
+    ["135","Invalid Country Code"],
+    ["150","Invalid merchant set up"],
+    ["151","Activation failed"],
+    ["152","Exceeds limit"],
+    ["153","Already redeemed"],
+    ["154","Over monthly limit"],
+    ["155","Recharge amount exceeded"],
+    ["156","Max number of recharges exceeded"],
+    ["157","Invalid entry"],
+    ["208","Lost Card / Lost Check"],
+    ["209","Stolen card"],
+    ["211","Invalid SKU number"],
+    ["212","Missing conditional data"],
+    ["213","Invalid account number for card type"],
+    ["214","Invalid payment type/card type for merchant ID"],
+    ["215","Invalid transaction for Merchant ID"],
+    ["216","Invalid TransArmor request. Not supported for given Payment Type, or Merchant is not enabled for Transarmor"],
+    ["217","Missing or invalid secure payment data"],
+    ["218","Merchant ID not enabled for Secure Code"],
+    ["219","Invalid Merchant Category Code"],
+    ["220","Customer service phone number missing"],
+    ["221","Merchant not enabled for soft descriptors, account updater or optimization processing"],
+    ["222","Partial auth not allowed"],
+    ["223","Customer under 18 years old"],
+    ["224","Account blocked — possible compromise"],
+    ["225","Bill-to address does not match ship-to"],
+    ["226","Invalid preapproval number"],
+    ["227","Invalid email address"],
+    ["228","Need more ID — request full SSN"],
+    ["229","Previously declined/closed account"],
+    ["230","One time stop payment requested by cardholder"],
+    ["231","Stop payment requested for all payments"],
+    ["232","Stop all payments — account closed"],
+    ["233","Auth response date not valid"],
+    ["234","Issuance under minimum amount"],
+    ["235","Outstanding auth — funds on hold"],
+    ["236","Activation amount incorrect"],
+    ["237","Deny — new card issued"],
+    ["238","BIN blocked"],
+    ["242","Customer opt-out"],
+    ["243","Institution does not accept ACH payments"],
+    ["244","Original transaction not approved"],
+    ["245","Invalid MICR data"],
+    ["246","Declined due to high risk"],
+    ["247","Declined due to stand-in rules"],
+    ["248","Conditional Approval — Hold shipping for 24 hours"],
+    ["250","Re-authorization request is declined. Original Auth could not be found"],
+    ["251","Re-authorization request is declined. The customer account number, merchant id, or amount did not match the original authorization"],
+    ["252","Re-authorization request is declined. The amount significantly exceeds the original request amount"],
+    ["253","Re-authorization request is declined. The timeframes for re-authorization have been exceeded"],
+    ["254","Counter Offer to Supply Personal Guaranty"],
+    ["300","Invalid EAN or SCV"],
+    ["301","Lock has expired on prepaid card"],
+    ["302","Account closed. The account was closed, probably because the account balance was $0.00"],
+    ["303","Unknown account. The account could not be located or the account does not exist in the account table"],
+    ["304","Inactive account. The account has not been activated by an approved location"],
+    ["308","Already active. The card is already active and does not need to be reactivated"],
+    ["311","Not lost or stolen"],
+    ["315","Bad mag stripe. The mag stripe could not be parsed for account information"],
+    ["316","Incorrect location. There was a problem with the merchant location"],
+    ["317","Max balance exceeded. The transaction, if completed, would cause the account balance to be exceeded by the max_balance as specified in the promotion. Some merchants set the max_balance to a value twice the max transaction amount"],
+    ["318","Invalid amount. There was a problem with the amount field in the transaction format — more or less than min/max amounts specified in the promotion for that transaction"],
+    ["319","Invalid clerk. The clerk field was either missing, when required, or the content did not match the requirements"],
+    ["320","Invalid password"],
+    ["321","Invalid new password. The new password does not meet the minimum security criteria"],
+    ["322","Exceeded account reloads. The clerk/user/location was only permitted to reload some number of accounts. That number was exceeded. (See your Business Manager in order to extend this limit.)"],
+    ["323","Password retry exceeded. The user account has been frozen because the user attempted access and was denied. Seek management assistance"],
+    ["326","Incorrect transaction version or format number for POS transactions"],
+    ["327","Request not permitted by this account"],
+    ["328","Request not permitted by this merchant location"],
+    ["329","Bad_repay_date"],
+    ["330","Bad checksum. The checksum provided is incorrect"],
+    ["331","Balance not available (denial). Due to an internal Fiserv Prepaid Closed Loop issue, information from this account could not be retrieved"],
+    ["332","Account locked"],
+    ["333","No previous transaction. The void or reversal transaction could not be matched to a previous (original) transaction. In the case of a redemption, the corresponding locking transaction could not be identified"],
+    ["334","Already reversed"],
+    ["336","Bad Authorization ID. The Authorization ID test failed"],
+    ["337","Too many transactions requested"],
+    ["338","No transactions available/no more transactions available. There are no transactions for this account or there are no transactions as determined by the specified first transaction number"],
+    ["339","Transaction history not available"],
+    ["340","New password required"],
+    ["341","Invalid status change. The status change requested (e.g. lost/stolen, freeze active card) cannot be performed"],
+    ["342","Void of activation after account activity"],
+    ["343","No phone service. Attempted a calling card transaction on an account which is not configured for calling card activity"],
+    ["344","Internet access disabled"],
+    ["345","Invalid Date or Time"],
+    ["350","Additional customer authentication required or, Customer Authentication Required (Decline — Discover only)"],
+    ["351","Customer PIN authentication required"],
+    ["355","Invalid currency. The provided currency is invalid"],
+    ["356","Currency Not Supported"],
+    ["357","Currency conversion error"],
+    ["359","The terminal transaction number did not match (on a void or reversal)"],
+    ["367","Target embossed card entered and Transaction count entered do not match"],
+    ["368","No account link"],
+    ["369","Invalid time zone"],
+    ["370","Account on hold or subscriber not active"],
+    ["372","Promo location restricted"],
+    ["373","Invalid Card Account"],
+    ["374","Product code(s) restricted"],
+    ["375","Bad Post Date. The Post Date is not a valid date"],
+    ["376","Account status is void lock"],
+    ["377","Already active and reloadable"],
+    ["378","Account is Purged. The Account record was purged from the database"],
+    ["380","Bulk activation error"],
+    ["381","Bulk activation un-attempted error"],
+    ["382","Bulk activation package amount error"],
+    ["383","Store location zero not allowed"],
+    ["384","Account row locked"],
+    ["385","Accepted but not yet processed"],
+    ["402","TransArmor Service Unavailable"],
+    ["403","TransArmor Invalid Token or Account Number"],
+    ["404","TransArmor Key Error"],
+    ["414","Void/Full Reversal request unable to process due to network cut-off window elapsed. A Refund transaction is necessary to reconcile the cardholder's account. Applicable to Debit networks only."],
+    ["430","Prepaid Card Amount Over EU AMLD (Anti-Money Laundering Directive) Limit"],
+    ["500","Decline"],
+    ["501","Date of Birth Error for Check Processing"],
+    ["502","Invalid State Code"],
+    ["503","New Account Information"],
+    ["504","Do not try again"],
+    ["505","Please retry"],
+    ["506","Invalid Checking Account Number"],
+    ["507","New Account Information available"],
+    ["508","Try again later — Declined: Association's payment cancellation advice code provided. Applies to recurring authorizations only. These are examples of what may have occurred: the account is over the credit limit try again in 72 hours."],
+    ["509","Do not try again — Applies to recurring authorizations only. The card has expired"],
+    ["510","New Account Information — Applies to recurring authorizations only. The card has expired."],
+    ["511","Try again later — Applies to recurring authorizations only. The card has expired. Get the new expiration date and try again."],
+    ["512","Service not allowed or invalid surcharge amount"],
+    ["513","Decline. Transaction not permitted to acquirer or terminal."],
+    ["514","Do not try again — Applies to recurring authorizations only. There was security violation."],
+    ["515","Declined. No term record on Fiserv system"],
+    ["516","Please retry — Reasons for this error are one of the following: Format Error, Unable to route transaction, Switch or issuer unavailable, System Busy, Timeout"],
+    ["517","CVV2 Declined"],
+    ["518","Invalid account/date or sales date in future"],
+    ["519","Invalid Effective Date"],
+    ["520","Reversal Rejected. Do not try again."],
+    ["521","Enter lesser amount"],
+    ["522","Cash Back greater than total Transaction amount"],
+    ["523","Crypto box is offline"],
+    ["524","Debit Switch unavailable Timeout Retry — Communications link to debit/EBT network gateway is down or responded with a “System Malfunction (96)” message"],
+    ["525","Debit/EBT network gateway cannot get through to the ISSUER."],
+    ["526","Undefined Card — Debit/EBT network gateway cannot route card based on Merchant Entitlement"],
+    ["527","Network Response indicates that Merchant ID / SE is invalid"],
+    ["528","Debit/EBT transaction count exceeds pre-determined limit in specified time/ Withdrawal limit exceeded."],
+    ["529","Resubmission of transaction violates debit/EBT network frequency"],
+    ["530","The authorizing network has a problem decrypting the cryptogram in the request"],
+    ["531","Retry with 3DS data"],
+    ["532","The DUKPT Base Derivation key is missing or incorrect in the PIN pad, PIN key synchronization error, or Master session PIN key is missing."],
+    ["533","Invalid encryption key offset sent by merchant"],
+    ["534","Invalid master session key id sent by merchant"],
+    ["539","No Checking Account"],
+    ["540","Edit Honor"],
+    ["541","No Savings Account"],
+    ["542","DUKPT: An error while processing the PIN block that is not related to the point-of-sale equipment. Contact the Help Desk for assistance."],
+    ["550","Invalid Vehicle"],
+    ["551","Invalid Driver"],
+    ["552","Invalid Product"],
+    ["553","Exceeds transaction total limit per product class"],
+    ["554","Over daily limit"],
+    ["555","Invalid Date/Time"],
+    ["556","Exceeds quantity"],
+    ["557","Invalid prompt entry"],
+    ["558","Invalid Track 2 data"],
+    ["559","Voyager ID problem"],
+    ["560","Invalid Odometer"],
+    ["561","Invalid Restriction Code"],
+    ["562","Pay at pump not allowed"],
+    ["563","Over fuel limit"],
+    ["564","Over cash limit"],
+    ["565","Fuel price error"],
+    ["566","Y or N required"],
+    ["567","Over repair limit"],
+    ["568","Over additive limit"],
+    ["569","Invalid user"],
+    ["570","Before 1400 and can't cut. Wait until 2:00 pm Eastern."],
+    ["571","Cut time too close to 1400"],
+    ["572","Checker/Manager not found"],
+    ["573","Security insufficient"],
+    ["574","No transaction security record"],
+    ["575","Insufficient data"],
+    ["576","Merchant has mail pending"],
+    ["577","No messages pending"],
+    ["578","The Visa OCT / MasterCard MoneySend activity has exceeded preset transaction count or amount limit within a rolling 24-hour period for given merchant."],
+    ["579","The Visa OCT / MasterCard MoneySend activity has exceeded preset transaction count or amount limit within a rolling 7-day period for given merchant."],
+    ["580","The Visa OCT / MasterCard MoneySend activity has exceeded preset transaction count or amount limit within a rolling 30-day period for given merchant."],
+    ["581","The Visa OCT / MasterCard MoneySend Funding activity has exceeded preset transaction count or amount limit within a rolling 24-hour period for this account number."],
+    ["582","The Visa OCT / MasterCard MoneySend Funding activity has exceeded preset transaction count or amount limit within a rolling 7-day period for this account number."],
+    ["583","The Visa OCT / MasterCard MoneySend Funding activity has exceeded preset transaction count or amount limit within a rolling 30-day period for this account number."],
+    ["584","The Visa OCT / MasterCard MoneySend Payment activity has exceeded preset transaction count or amount limit within a rolling 24-hour period for this account number."],
+    ["585","The Visa OCT / MasterCard MoneySend Payment activity has exceeded preset transaction count or amount limit within a rolling 7-day period for this account number."],
+    ["586","The Visa OCT / MasterCard MoneySend Payment activity has exceeded preset transaction count or amount limit within a rolling 30-day period for this account number."],
+    ["587","The single transaction amount limit was exceeded for a Visa OCT/ MasterCard MoneySend transaction for given merchant."],
+    ["588","All Visa OCT / MasterCard MoneySend transactions are blocked for a rolling 24 hour period, or 7 day period (current and prior 6 days), or 30 day period (current and prior 29 days) for given merchant"],
+    ["601","Invalid Batch Number/ Invalid Batch ID or Invalid OpenBatch"],
+    ["602","No Open Batch"],
+    ["603","Close Unavailable"],
+    ["604","Close Not Valid"],
+    ["701","Approved EMV Key Load"],
+    ["702","EMV Key Download Error"],
+    ["703","Approved EMV Key Load, more key load data pending"],
+    ["704","Pick Up Card"],
+    ["708","Honor With Authentication"],
+    ["721","Invalid ZIP Code"],
+    ["722","Invalid value in the field / Host Totals Declined"],
+    ["723","Driver's License or ID is Required"],
+    ["724","Referred — Not Active"],
+    ["726","Unable to Locate Record On File"],
+    ["727","Refer — Call Authorization"],
+    ["728","Referred — Skip Trace Info"],
+    ["729","Hard Negative Info On File"],
+    ["731","Rejected Lost/Stolen Checks"],
+    ["740","Totals Unavailable"],
+    ["767","Hard Capture; Pick Up"],
+    ["771","Amount Too Large"],
+    ["772","Duplicate Return"],
+    ["773","Unsuccessful"],
+    ["774","Duplicate Reversal"],
+    ["775","Subsystem Unavailable"],
+    ["776","Duplicate Completion"],
+    ["782","Count Exceeds Limit"],
+    ["785","No reason to decline — applicable to $0.00 verification requests and may be returned on Online Refund responses. Should be treated as an approval."],
+    ["790","Not approved. Used only in Visa bill/recurring payment. Merchant must not resubmit same transaction but may continue billing process in subsequent billing period."],
+    ["791","Not approved. Used only in Visa bill/recurring payment. Merchant must stop recurring payment requests."],
+    ["792","See attendant."],
+    ["800","Deferred authorization not cancelled"],
+    ["801","Over merchandise limit"],
+    ["802","Imprint card"],
+    ["803","Not on file"],
+    ["804","Fuel only"],
+    ["805","Velocity exceeded"],
+    ["806","Authorization ID needed"],
+    ["807","Over non-fuel limit"],
+    ["808","Invalid location"],
+    ["809","Over card velocity count"],
+    ["810","Over card velocity amount"],
+    ["811","Over issuer velocity count"],
+    ["812","Over issuer velocity amount"],
+    ["813","Over merchant daily velocity count"],
+    ["814","Over merchant daily velocity amount"],
+    ["815","Over merchant daily velocity both"],
+    ["816","Over merchant product velocity amount"],
+    ["817","Over merchant product velocity count"],
+    ["818","Over merchant product velocity both"],
+    ["819","Over chain daily velocity count"],
+    ["820","Over chain daily velocity amount"],
+    ["821","Over chain daily velocity both"],
+    ["822","Over chain product velocity count"],
+    ["823","Over chain product velocity both"],
+    ["824","Over chain product velocity amount"],
+    ["825","No chain ID for chain merchant"],
+    ["826","Signature required"],
+    ["827","Velocity exception error — pay inside"],
+    ["828","Exceeds merchant count for period — pay inside"],
+    ["829","Exceeds merchant amount for period — pay inside"],
+    ["830","Exceeds merchant count and amount for period — pay inside"],
+    ["831","Exceeds zip code count for period — pay inside"],
+    ["832","Exceeds zip code amount for period — pay inside"],
+    ["833","Exceeds zip code count and amount for period — pay inside"],
+    ["834","Exceeds state count for period — pay inside"],
+    ["835","Exceeds state amount for period — pay inside"],
+    ["836","Exceeds state count and amount for period — pay inside"],
+    ["837","Exceeds global count for period — pay inside"],
+    ["838","Exceeds global amount for period — pay inside"],
+    ["839","Exceeds global count and amount for period — pay inside"],
+    ["840","Unknown velocity error — pay inside"],
+    ["902","Invalid transaction. This merchant, card or terminal is not permitted to perform this transaction, or the transaction type is invalid, or Fiserv is unable to route a refund request to the network, or there is an issue with the xml message. If a 902 is returned when submitting a completion for the second time, the first completion submitted has been successfully applied, even if the device did not receive a response in the first completion."],
+    ["903","Invalid Reversal Transaction — transaction already settled"],
+    ["904","Format error."],
+    ["905","Unsupported message. Transaction was rejected. Call your helpdesk or operations support."],
+    ["906","System Error. There is a problem with the host processing system. Call your helpdesk or operations support."],
+    ["907","Card issuer or switch inoperative or processor not available"],
+    ["908","Transaction destination not found for routing."],
+    ["909","System malfunction or timeout"],
+    ["911","Card issuer timed out."],
+    ["913","Duplicate transaction."],
+    ["914","Void/Full Reversal request unable to process due to settlement already occurred. A Refund transaction may be necessary to reconcile the cardholder's account."],
+    ["915","Timeout Reversal not supported. Resend the original transaction with the same Reference Number that timed out. Do not retry the timeout reversal"],
+    ["916","Void/Full Reversal request unable to process since the Original Authorization was not found."],
+    ["920","Security H/W or S/W error — try again"],
+    ["921","Security H/W or S/W error — no action"],
+    ["923","Request in progress"],
+    ["924","Limit check failed"],
+    ["940","Error."],
+    ["941","Invalid issuer."],
+    ["942","Customer cancellation"],
+    ["944","Invalid response"],
+    ["950","Violation of business arrangement"],
+    ["954","CCV failed."],
+    ["958","CCV2 failed"],
+    ["959","CAV failed"],
+    ["963","Acquirer channel unavailable"]
+  ];
+
+  var APPROVE_CODES = ["000","002","003"];
+
+  function renderCodes(filter) {
+    var body = document.getElementById('codeTableBody');
+    var noResults = document.getElementById('noCodeResults');
+    var countEl = document.getElementById('codeCount');
+    var term = (filter || '').trim().toLowerCase();
+    var rows = RESPONSE_CODES.filter(function(row) {
+      return term === '' || row[0].indexOf(term) !== -1 || row[1].toLowerCase().indexOf(term) !== -1;
+    });
+    body.innerHTML = rows.map(function(row) {
+      var cls = APPROVE_CODES.indexOf(row[0]) !== -1 ? ' class="approve"' : '';
+      return '<tr' + cls + '><td class="code-num">' + row[0] + '</td><td>' + row[1] + '</td></tr>';
+    }).join('');
+    countEl.textContent = rows.length + ' of ' + RESPONSE_CODES.length + ' codes';
+    noResults.style.display = rows.length === 0 ? 'block' : 'none';
+  }
+
+  document.getElementById('codeSearch').addEventListener('input', function(e) {
+    renderCodes(e.target.value);
+  });
+
+  renderCodes('');
+</script>
+
+</body>
+</html>
