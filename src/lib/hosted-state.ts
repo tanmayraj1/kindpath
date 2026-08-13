@@ -14,7 +14,7 @@ import crypto from "node:crypto";
  * called authorizeCharge with a mock placeholder token, so with a real gateway
  * configured they ran a demo code path.
  */
-export type HostedKind = "donation" | "ticket" | "membership";
+export type HostedKind = "donation" | "ticket" | "membership" | "plan_card";
 
 export type HostedState = {
   kind?: HostedKind; // absent on pre-existing cookies → treated as "donation"
@@ -31,6 +31,11 @@ export type HostedState = {
   quantity?: number;
   // membership joins
   planId?: string;
+  // replacing the card on an existing recurring plan (kind: "plan_card").
+  // Bound into the signed state so the returning browser cannot redirect the
+  // new card, or the gift it pays for, onto somebody else's plan.
+  recurringPlanId?: string;
+  donorId?: string;
   paymentOrderId: string; // must match the gateway's return params
   exp: number; // unix seconds
 };

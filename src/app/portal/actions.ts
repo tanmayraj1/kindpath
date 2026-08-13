@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
+import { audit } from "@/lib/audit";
 import { auditConsentChange } from "@/lib/privacy";
 import { z } from "zod";
 import { requireDonor } from "@/lib/auth/guards";
@@ -37,17 +39,31 @@ export async function retryFailedPlan(planId: string): Promise<RetryState> {
   }
 }
 
+/**
+ * Result of a donor-initiated change. These returned `Promise<void>` and did
+ * nothing at all when the row wasn't theirs, so a donor cancelling a gift saw a
+ * spinner finish and had no way to know whether it worked.
+ */
+export type PortalMutation = { ok?: boolean; error?: string };
+
+const NOT_YOURS: PortalMutation = {
+  error: "We couldn't find that on your account. Please refresh and try again.",
+};
+
 // ---- recurring plan controls (pause / resume / cancel) ----
-export async function updatePlanStatus(planId: string, action: "pause" | "resume" | "cancel") {
+export async function updatePlanStatus(
+  planId: string,
+  action: "pause" | "resume" | "cancel"
+): Promise<PortalMutation> {
   const session = await requireDonor();
   const status = action === "pause" ? "paused" : action === "resume" ? "active" : "cancelled";
 
-  await withTenant(session.orgId, async (tx) => {
+  const found = await withTenant(session.orgId, async (tx) => {
     // ownership enforced by RLS (org) + explicit donorId check
     const plan = await tx.recurringPlan.findFirst({
       where: { id: planId, donorId: session.sub },
     });
-    if (!plan) return;
+    if (!plan) return false;
     await tx.recurringPlan.update({
       where: { id: planId },
       data: {
@@ -55,25 +71,57 @@ export async function updatePlanStatus(planId: string, action: "pause" | "resume
         cancelledAt: action === "cancel" ? new Date() : null,
       },
     });
+    return true;
   });
+  if (!found) return NOT_YOURS;
+
+  // A donor disputing "I cancelled and you charged me again" is answered by this.
+  await audit({
+    actor: { type: "donor", id: session.sub },
+    orgId: session.orgId,
+    action: `recurring_plan.${action}`,
+    entityType: "recurring_plan",
+    entityId: planId,
+  });
+
   revalidatePath("/portal/recurring");
   revalidatePath("/portal");
+  return { ok: true };
 }
 
 // ---- remove a payment method ----
-export async function removePaymentMethod(methodId: string) {
+export async function removePaymentMethod(methodId: string): Promise<PortalMutation> {
   const session = await requireDonor();
-  await withTenant(session.orgId, async (tx) => {
+
+  const result = await withTenant(session.orgId, async (tx) => {
     const pm = await tx.donorPaymentMethod.findFirst({
       where: { id: methodId, donorId: session.sub },
     });
-    if (!pm) return;
+    if (!pm) return "missing" as const;
+
+    // Removing the card an active recurring gift is billed against would stop
+    // that gift silently at the next cycle. Say so instead.
+    const inUse = await tx.recurringPlan.count({
+      where: { paymentMethodId: methodId, donorId: session.sub, status: { in: ["active", "paused"] } },
+    });
+    if (inUse > 0) return "in_use" as const;
+
     await tx.donorPaymentMethod.update({
       where: { id: methodId },
       data: { status: "removed", isDefault: false },
     });
+    return "removed" as const;
   });
+
+  if (result === "missing") return NOT_YOURS;
+  if (result === "in_use") {
+    return {
+      error:
+        "This card is paying for a recurring gift. Add another card first, or cancel the gift, then remove it.",
+    };
+  }
   revalidatePath("/portal/payment-methods");
+  return { ok: true };
 }
 
 // ---- update profile + CASL preferences ----
@@ -192,4 +240,91 @@ export async function requestMyErasure(): Promise<PortalState & { receiptsRetain
 
   revalidatePath("/portal");
   return { ok: true, receiptsRetained: result.receiptsRetained };
+}
+
+// ---------------- replace the card on a recurring gift ----------------
+
+export type CardUpdateStart = { ok: true; redirectTo: string } | { ok: false; message: string };
+
+/**
+ * Start replacing the card behind a recurring gift.
+ *
+ * The dunning email and the portal banner both said "Update payment method →"
+ * and landed the donor on a page that could only REMOVE cards. A donor whose
+ * card had expired — the entire population that banner exists for — had no
+ * self-service route at all, which defeated the retry flow we built for them.
+ *
+ * This charges the gift's amount on the new card rather than merely storing it.
+ * That is deliberate and it is what both gateways actually support: WeVend's
+ * reusable token IS a completed sale's transactionId, and it also collects the
+ * payment that failed, so the donor's giving doesn't silently skip a month.
+ */
+export async function beginCardUpdate(planId: string): Promise<CardUpdateStart> {
+  const session = await requireDonor();
+
+  if (!(await rateLimit(`cardupdate:${session.sub}`, 5, 60_000)).ok) {
+    return { ok: false, message: "Too many attempts. Please wait a minute and try again." };
+  }
+
+  const ctx = await withTenant(session.orgId, async (tx) => {
+    const plan = await tx.recurringPlan.findFirst({
+      where: { id: planId, donorId: session.sub, status: { not: "cancelled" } },
+    });
+    if (!plan) return null;
+    const org = await tx.organization.findUnique({ where: { id: session.orgId } });
+    return { plan, org };
+  });
+  if (!ctx?.org) {
+    return { ok: false, message: "We couldn't find that gift on your account." };
+  }
+
+  const { getPaymentProviderForOrg, supportsHostedSale } = await import("@/lib/payments");
+  const provider = await getPaymentProviderForOrg(session.orgId);
+  if (!supportsHostedSale(provider)) {
+    return {
+      ok: false,
+      message:
+        "This organization can't accept card updates online yet. Please contact them directly and they can update it for you.",
+    };
+  }
+
+  const amount = Number(ctx.plan.amount);
+  const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+
+  let init;
+  try {
+    init = await provider.beginHostedSale({
+      orgId: session.orgId,
+      money: { amount, currency: ctx.plan.currency },
+      // WeVend requires the return URL to end in /response.
+      redirectUrl: `${base}/portal/recurring/response`,
+      savePaymentMethod: true,
+      donorEmail: session.email,
+      description: `${ctx.org.name} — recurring gift`,
+    });
+  } catch (e) {
+    const { captureError } = await import("@/lib/observability");
+    captureError(e, { source: "portal.beginCardUpdate", orgId: session.orgId, planId });
+    return { ok: false, message: "The payment service is unavailable. Please try again shortly." };
+  }
+
+  const { signHostedState, HOSTED_STATE_COOKIE } = await import("@/lib/hosted-state");
+  cookies().set(
+    HOSTED_STATE_COOKIE,
+    signHostedState({
+      kind: "plan_card",
+      orgId: session.orgId,
+      slug: "",
+      amount,
+      currency: ctx.plan.currency,
+      fundId: ctx.plan.fundId ?? undefined,
+      frequency: "monthly",
+      recurringPlanId: planId,
+      donorId: session.sub,
+      paymentOrderId: init.paymentOrderId,
+    }),
+    { httpOnly: true, sameSite: "lax", path: "/", maxAge: 30 * 60, secure: process.env.NODE_ENV === "production" }
+  );
+
+  return { ok: true, redirectTo: init.redirectTo };
 }

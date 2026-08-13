@@ -1,28 +1,29 @@
 "use client";
 
-import { useTransition } from "react";
-import { Loader2, Lock, Unlock } from "lucide-react";
+import { Lock, Unlock } from "lucide-react";
 import { setCampaignStatus } from "@/app/(dashboard)/dashboard/actions";
-import { Button } from "@/components/ui/button";
+import { ActionButton } from "@/components/ui/action-button";
 
 export function CampaignStatusButton({ id, status }: { id: string; status: string }) {
-  const [pending, start] = useTransition();
   const active = status === "active";
   return (
-    <Button
+    <ActionButton
       variant="outline"
       size="sm"
-      disabled={pending}
-      onClick={() => start(() => setCampaignStatus(id, active ? "closed" : "active"))}
+      action={() => setCampaignStatus(id, active ? "closed" : "active")}
+      confirm={
+        active
+          ? {
+              title: "Close this campaign?",
+              description:
+                "Its public page stops accepting new gifts. Donations already received and their receipts are untouched, and you can reopen it at any time.",
+              confirmLabel: "Close campaign",
+            }
+          : undefined
+      }
     >
-      {pending ? (
-        <Loader2 className="size-4 animate-spin" />
-      ) : active ? (
-        <Lock className="size-4" />
-      ) : (
-        <Unlock className="size-4" />
-      )}
+      {active ? <Lock className="size-4" aria-hidden /> : <Unlock className="size-4" aria-hidden />}
       {active ? "Close" : "Reopen"}
-    </Button>
+    </ActionButton>
   );
 }

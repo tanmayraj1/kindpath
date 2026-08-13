@@ -1,22 +1,25 @@
 "use client";
 
-import { useTransition } from "react";
-import { Trash2, Loader2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { removePaymentMethod } from "@/app/portal/actions";
-import { Button } from "@/components/ui/button";
+import { ActionButton } from "@/components/ui/action-button";
 
 export function RemoveMethodButton({ methodId }: { methodId: string }) {
-  const [pending, start] = useTransition();
   return (
-    <Button
+    <ActionButton
       variant="ghost"
       size="sm"
-      disabled={pending}
       className="text-destructive hover:bg-destructive/10"
-      onClick={() => start(() => removePaymentMethod(methodId))}
+      action={() => removePaymentMethod(methodId)}
+      confirm={{
+        title: "Remove this card?",
+        description:
+          "We'll stop keeping it on file. If a recurring gift is being paid with it, add another card first — we'll tell you rather than let the gift lapse.",
+        confirmLabel: "Remove card",
+        destructive: true,
+      }}
     >
-      {pending ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
-      Remove
-    </Button>
+      <Trash2 className="size-4" aria-hidden /> Remove
+    </ActionButton>
   );
 }

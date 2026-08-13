@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Pause, Play, X, Loader2, RefreshCw } from "lucide-react";
 import { updatePlanStatus, retryFailedPlan } from "@/app/portal/actions";
 import { Button } from "@/components/ui/button";
+import { ActionButton } from "@/components/ui/action-button";
 
 export function PlanControls({
   planId,
@@ -24,7 +25,7 @@ export function PlanControls({
 
   return (
     <div className="flex flex-col items-end gap-1">
-      <div className="flex justify-end gap-2">
+      <div className="flex flex-wrap items-start justify-end gap-2">
         {retryable && (
           <Button
             variant="primary"
@@ -42,36 +43,32 @@ export function PlanControls({
           </Button>
         )}
         {status === "active" ? (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={pending}
-            onClick={() => start(() => updatePlanStatus(planId, "pause"))}
-          >
-            {pending ? <Loader2 className="size-4 animate-spin" /> : <Pause className="size-4" />}
-            Pause
-          </Button>
+          <ActionButton variant="outline" size="sm" action={() => updatePlanStatus(planId, "pause")}>
+            <Pause className="size-4" aria-hidden /> Pause
+          </ActionButton>
         ) : status === "paused" ? (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={pending}
-            onClick={() => start(() => updatePlanStatus(planId, "resume"))}
-          >
-            {pending ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
-            Resume
-          </Button>
+          <ActionButton variant="outline" size="sm" action={() => updatePlanStatus(planId, "resume")}>
+            <Play className="size-4" aria-hidden /> Resume
+          </ActionButton>
         ) : null}
-        <Button
+
+        {/* Cancelling a recurring gift had no confirmation step at all — one
+            mis-click ended the gift, and the action reported nothing back. */}
+        <ActionButton
           variant="ghost"
           size="sm"
-          disabled={pending}
           className="text-destructive hover:bg-destructive/10"
-          onClick={() => start(() => updatePlanStatus(planId, "cancel"))}
+          action={() => updatePlanStatus(planId, "cancel")}
+          confirm={{
+            title: "Cancel this recurring gift?",
+            description:
+              "We'll stop collecting it. Gifts you've already made are unaffected and you keep every receipt. You can always start a new recurring gift later.",
+            confirmLabel: "Cancel my gift",
+            destructive: true,
+          }}
         >
-          <X className="size-4" />
-          Cancel
-        </Button>
+          <X className="size-4" aria-hidden /> Cancel
+        </ActionButton>
       </div>
       {retryMsg && (
         <p className={retryMsg.ok ? "text-xs text-success" : "text-xs text-destructive"}>

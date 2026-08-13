@@ -19,6 +19,21 @@ import { assertBillingActive } from "@/lib/access";
 
 export type ActionState = { error?: string; ok?: boolean };
 
+/**
+ * Result of a one-shot mutation triggered from a button rather than a form.
+ *
+ * These actions used to return `Promise<void>` and quietly do nothing when the
+ * record wasn't found — a scoping bug, a stale page, or another tab having
+ * deleted the row all looked identical to success. The button spun, the page
+ * revalidated, and nothing had changed. Returning a result makes "it didn't
+ * work" something the UI can actually say.
+ */
+export type MutationState = { ok?: boolean; error?: string };
+
+const NOT_FOUND: MutationState = {
+  error: "That record no longer exists, or belongs to another organization. Refresh and try again.",
+};
+
 // ---------------- team / staff management (org_admin only) ----------------
 export type TeamState = {
   error?: string;
@@ -477,13 +492,20 @@ export async function createPledge(_prev: ActionState, formData: FormData): Prom
   return { ok: true };
 }
 
-export async function setPledgeStatus(pledgeId: string, status: "open" | "fulfilled" | "cancelled") {
+export async function setPledgeStatus(
+  pledgeId: string,
+  status: "open" | "fulfilled" | "cancelled"
+): Promise<MutationState> {
   const session = await requireOrgUser();
-  await withTenant(session.orgId, async (tx) => {
+  const found = await withTenant(session.orgId, async (tx) => {
     const p = await tx.pledge.findFirst({ where: { id: pledgeId } });
-    if (p) await tx.pledge.update({ where: { id: pledgeId }, data: { status } });
+    if (!p) return false;
+    await tx.pledge.update({ where: { id: pledgeId }, data: { status } });
+    return true;
   });
+  if (!found) return NOT_FOUND;
   revalidatePath("/dashboard/pledges");
+  return { ok: true };
 }
 
 // ---------------- events & ticketing ----------------
@@ -546,25 +568,36 @@ export async function addTicketType(_prev: ActionState, formData: FormData): Pro
   if (!parsed.success) return { error: parsed.error.issues[0]?.message };
   const d = parsed.data;
   if (d.advantage >= d.price) return { error: "Advantage must be less than price." };
-  await withTenant(session.orgId, async (tx) => {
+  const created = await withTenant(session.orgId, async (tx) => {
     const ev = await tx.event.findFirst({ where: { id: d.eventId } });
-    if (!ev) return;
+    if (!ev) return false;
     await tx.ticketType.create({
       data: { orgId: session.orgId, eventId: d.eventId, name: d.name, price: d.price, advantageValue: d.advantage },
     });
+    return true;
   });
+  // Reported success after creating nothing when the event wasn't found, so a
+  // ticket type could silently fail to exist while the form said it saved.
+  if (!created) return { error: "That event no longer exists. Refresh and try again." };
   revalidatePath(`/dashboard/events/${d.eventId}`);
   return { ok: true };
 }
 
-export async function setEventStatus(eventId: string, status: "published" | "closed") {
+export async function setEventStatus(
+  eventId: string,
+  status: "published" | "closed"
+): Promise<MutationState> {
   const session = await requireOrgUser();
-  await withTenant(session.orgId, async (tx) => {
+  const found = await withTenant(session.orgId, async (tx) => {
     const ev = await tx.event.findFirst({ where: { id: eventId } });
-    if (ev) await tx.event.update({ where: { id: eventId }, data: { status } });
+    if (!ev) return false;
+    await tx.event.update({ where: { id: eventId }, data: { status } });
+    return true;
   });
+  if (!found) return NOT_FOUND;
   revalidatePath(`/dashboard/events/${eventId}`);
   revalidatePath("/dashboard/events");
+  return { ok: true };
 }
 
 // ---------------- membership plans ----------------
@@ -597,13 +630,20 @@ export async function createMembershipPlan(_prev: ActionState, formData: FormDat
   return { ok: true };
 }
 
-export async function setMembershipPlanActive(planId: string, isActive: boolean) {
+export async function setMembershipPlanActive(
+  planId: string,
+  isActive: boolean
+): Promise<MutationState> {
   const session = await requireOrgUser();
-  await withTenant(session.orgId, async (tx) => {
+  const found = await withTenant(session.orgId, async (tx) => {
     const p = await tx.membershipPlan.findFirst({ where: { id: planId } });
-    if (p) await tx.membershipPlan.update({ where: { id: planId }, data: { isActive } });
+    if (!p) return false;
+    await tx.membershipPlan.update({ where: { id: planId }, data: { isActive } });
+    return true;
   });
+  if (!found) return NOT_FOUND;
   revalidatePath("/dashboard/memberships");
+  return { ok: true };
 }
 
 // ---------------- fundraising campaigns ----------------
@@ -650,15 +690,21 @@ export async function createCampaign(_prev: ActionState, formData: FormData): Pr
   return { ok: true };
 }
 
-export async function setCampaignStatus(campaignId: string, status: "active" | "closed") {
+export async function setCampaignStatus(
+  campaignId: string,
+  status: "active" | "closed"
+): Promise<MutationState> {
   const session = await requireOrgUser();
-  await withTenant(session.orgId, async (tx) => {
+  const found = await withTenant(session.orgId, async (tx) => {
     const c = await tx.campaign.findFirst({ where: { id: campaignId } });
-    if (!c) return;
+    if (!c) return false;
     await tx.campaign.update({ where: { id: campaignId }, data: { status } });
+    return true;
   });
+  if (!found) return NOT_FOUND;
   revalidatePath("/dashboard/campaigns");
   revalidatePath(`/dashboard/campaigns/${campaignId}`);
+  return { ok: true };
 }
 
 // ---------------- communications campaign (CASL-gated) ----------------
@@ -895,9 +941,9 @@ export async function updateDonorDetails(_prev: ActionState, formData: FormData)
   const emailOptIn = d.emailMarketing === "on";
   const smsOptIn = d.smsMarketing === "on";
 
-  await withTenant(session.orgId, async (tx) => {
+  const saved = await withTenant(session.orgId, async (tx) => {
     const donor = await tx.donor.findFirst({ where: { id: d.donorId } });
-    if (!donor) return;
+    if (!donor) return false;
     const addressComplete = !!(d.addressLine1 && d.city && d.province && d.postalCode);
     await tx.donor.update({
       where: { id: d.donorId },
@@ -918,7 +964,11 @@ export async function updateDonorDetails(_prev: ActionState, formData: FormData)
         caslConsentSource: "org_admin",
       },
     });
+    return true;
   });
+  // Previously returned ok:true even when nothing was written, so an edit to a
+  // donor who had been erased or belonged to another org reported as saved.
+  if (!saved) return { error: "That donor no longer exists. Refresh and try again." };
   revalidatePath(`/dashboard/donors/${d.donorId}`);
   revalidatePath("/dashboard/donors");
   return { ok: true };
@@ -928,19 +978,33 @@ export async function updateDonorDetails(_prev: ActionState, formData: FormData)
 export async function orgUpdatePlanStatus(
   planId: string,
   action: "pause" | "resume" | "cancel"
-) {
+): Promise<MutationState> {
   const session = await requireOrgUser();
   const status = action === "pause" ? "paused" : action === "resume" ? "active" : "cancelled";
-  await withTenant(session.orgId, async (tx) => {
+  const found = await withTenant(session.orgId, async (tx) => {
     const plan = await tx.recurringPlan.findFirst({ where: { id: planId } });
-    if (!plan) return;
+    if (!plan) return false;
     await tx.recurringPlan.update({
       where: { id: planId },
       data: { status, cancelledAt: action === "cancel" ? new Date() : null },
     });
+    return true;
   });
+  if (!found) return NOT_FOUND;
+
+  // Cancelling someone's recurring gift on their behalf is exactly the kind of
+  // action a donor later disputes. Record who did it.
+  await audit({
+    actor: { type: "org_user", id: session.sub },
+    orgId: session.orgId,
+    action: `recurring_plan.${action}`,
+    entityType: "recurring_plan",
+    entityId: planId,
+  });
+
   revalidatePath("/dashboard/recurring");
   revalidatePath("/dashboard");
+  return { ok: true };
 }
 
 // ---------------- void a receipt (e.g. on refund/correction) ----------------
