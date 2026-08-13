@@ -218,7 +218,10 @@ export async function createFund(_prev: ActionState, formData: FormData): Promis
     name: formData.get("name"),
     code: formData.get("code") || undefined,
   });
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message };
+  if (!parsed.success) {
+    const e = formErrors(parsed.error);
+    return { error: e.message, fields: e.fields };
+  }
 
   await withTenant(session.orgId, (tx) =>
     tx.fund.create({
@@ -568,9 +571,16 @@ const ticketTypeSchema = z.object({
 export async function addTicketType(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const session = await requireOrgUser();
   const parsed = ticketTypeSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message };
+  if (!parsed.success) {
+    const e = formErrors(parsed.error);
+    return { error: e.message, fields: e.fields };
+  }
   const d = parsed.data;
-  if (d.advantage >= d.price) return { error: "Advantage must be less than price." };
+  // Subtracted from the eligible amount on the tax receipt, so an advantage at
+  // or above the price would claim a gift of zero or less.
+  if (d.advantage >= d.price) {
+    return { error: "Advantage must be less than the price.", fields: { advantage: "Must be less than the price." } };
+  }
   const created = await withTenant(session.orgId, async (tx) => {
     const ev = await tx.event.findFirst({ where: { id: d.eventId } });
     if (!ev) return false;

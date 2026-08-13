@@ -6,6 +6,7 @@ import { Check, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Section, SectionHeading } from "@/components/ui/section";
+import { PLANS, type PlanKey } from "@/lib/plans";
 import { cn, formatCAD } from "@/lib/utils";
 
 type Plan = {
@@ -17,11 +18,22 @@ type Plan = {
   cta: string;
 };
 
+/**
+ * Prices come from the plan catalog, not from this file.
+ *
+ * They were hardcoded here AND in lib/plans.ts, which is two sources of truth
+ * for the number a customer is quoted. They had already drifted: Enterprise said
+ * "Talk to sales" with no price on the public page while the catalog billed it
+ * at $199/month, so an Enterprise customer could be invoiced an amount they were
+ * never shown.
+ */
+const priceOf = (key: PlanKey) => PLANS.find((p) => p.key === key)?.priceMonthly ?? 0;
+
 const plans: Plan[] = [
   {
     name: "Starter",
     tagline: "For small congregations getting started.",
-    monthly: 29,
+    monthly: priceOf("starter"),
     cta: "Start free trial",
     features: [
       "Up to 250 donors",
@@ -35,7 +47,7 @@ const plans: Plan[] = [
   {
     name: "Community",
     tagline: "For growing faith communities.",
-    monthly: 59,
+    monthly: priceOf("community"),
     highlighted: true,
     cta: "Start free trial",
     features: [
@@ -51,7 +63,7 @@ const plans: Plan[] = [
   {
     name: "Enterprise",
     tagline: "For large or multi-campus organizations.",
-    monthly: null,
+    monthly: priceOf("enterprise"),
     cta: "Talk to sales",
     features: [
       "Unlimited donors",

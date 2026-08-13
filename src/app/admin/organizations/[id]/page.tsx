@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { TrendingUp, Users, Repeat, FileCheck2, CheckCircle2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/table";
 import { getOrgManage } from "@/lib/queries/admin";
@@ -106,7 +107,7 @@ export default async function OrgOverview({ params }: { params: { id: string } }
         </CardHeader>
         <CardContent>
           {data.recent.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">No donations yet.</p>
+            <EmptyState title="No donations yet" body="Donations appear here as this organization starts receiving gifts." />
           ) : (
             <Table>
               <Thead>

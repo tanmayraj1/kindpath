@@ -7,11 +7,18 @@ import { Logo } from "@/components/brand/logo";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+/**
+ * Root-relative, not bare fragments.
+ *
+ * These were "#features" etc., which resolve against the CURRENT page — so on
+ * /contact, /privacy, /terms and /dpa, where those ids don't exist, every
+ * primary nav link was dead. "/#features" navigates home and then scrolls.
+ */
 const navLinks = [
-  { href: "#features", label: "Features" },
-  { href: "#how-it-works", label: "How it works" },
-  { href: "#pricing", label: "Pricing" },
-  { href: "#faq", label: "FAQ" },
+  { href: "/#features", label: "Features" },
+  { href: "/#how-it-works", label: "How it works" },
+  { href: "/#pricing", label: "Pricing" },
+  { href: "/#faq", label: "FAQ" },
 ];
 
 export function SiteHeader() {

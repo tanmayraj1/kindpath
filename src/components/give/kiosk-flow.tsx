@@ -10,6 +10,7 @@ import {
   type KioskCompleteState,
 } from "@/app/give/[slug]/actions";
 import { Input } from "@/components/ui/input";
+import { Field } from "@/components/ui/field";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { SubmitButton } from "@/components/auth/submit-button";
@@ -191,32 +192,33 @@ export function KioskFlow({ org, hosted }: { org: Org; hosted: boolean }) {
           <input type="hidden" name="campaignId" value="none" />
           <input type="hidden" name="frequency" value="one_time" />
 
+          {/* Touch targets stay at h-12 for kiosk use; the change here is that
+              per-field errors are shown at all. Someone standing at a terminal in
+              a foyer cannot be sent around the loop once per invalid field. */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="k-firstName">First name</Label>
-              <Input id="k-firstName" name="firstName" className="h-12 text-base" required />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="k-lastName">Last name</Label>
-              <Input id="k-lastName" name="lastName" className="h-12 text-base" required />
-            </div>
+            <Field name="firstName" label="First name" className="[&_input]:h-12 [&_input]:text-base" required errors={state.fields} />
+            <Field name="lastName" label="Last name" className="[&_input]:h-12 [&_input]:text-base" required errors={state.fields} />
           </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="k-email">Email</Label>
-            <Input id="k-email" name="email" type="email" className="h-12 text-base" required />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="k-addressLine1">Address</Label>
-            <Input id="k-addressLine1" name="addressLine1" placeholder="Street address" className="h-12 text-base" required />
-          </div>
+          <Field name="email" label="Email" type="email" className="[&_input]:h-12 [&_input]:text-base" required errors={state.fields} />
+          <Field
+            name="addressLine1"
+            label="Address"
+            placeholder="Street address"
+            className="[&_input]:h-12 [&_input]:text-base"
+            required
+            errors={state.fields}
+          />
           <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-1 flex flex-col gap-2">
-              <Label htmlFor="k-city">City</Label>
-              <Input id="k-city" name="city" className="h-12 text-base" required />
-            </div>
+            <Field name="city" label="City" className="col-span-1 [&_input]:h-12 [&_input]:text-base" required errors={state.fields} />
             <div className="flex flex-col gap-2">
-              <Label htmlFor="k-province">Prov.</Label>
-              <select id="k-province" name="province" defaultValue="ON" className="h-12 rounded-lg border border-input bg-background px-2 text-base">
+              <Label htmlFor="province">Prov.</Label>
+              <select
+                id="province"
+                name="province"
+                defaultValue="ON"
+                aria-invalid={state.fields?.province ? true : undefined}
+                className="h-12 rounded-lg border border-input bg-background px-2 text-base"
+              >
                 {PROVINCES.map((p) => (
                   <option key={p} value={p}>
                     {p}
@@ -224,10 +226,7 @@ export function KioskFlow({ org, hosted }: { org: Org; hosted: boolean }) {
                 ))}
               </select>
             </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="k-postalCode">Postal</Label>
-              <Input id="k-postalCode" name="postalCode" placeholder="A1A 1A1" className="h-12 text-base" required />
-            </div>
+            <Field name="postalCode" label="Postal" placeholder="A1A 1A1" className="[&_input]:h-12 [&_input]:text-base" required errors={state.fields} />
           </div>
 
           <div className="flex gap-3">

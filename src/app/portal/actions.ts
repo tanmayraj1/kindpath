@@ -328,3 +328,60 @@ export async function beginCardUpdate(planId: string): Promise<CardUpdateStart> 
 
   return { ok: true, redirectTo: init.redirectTo };
 }
+
+// ---- change the amount of a recurring gift ----
+const planAmountSchema = z.object({
+  planId: z.string().min(1),
+  amount: z.coerce.number().min(1, "Enter an amount of at least $1").max(1_000_000),
+});
+
+/**
+ * Let a donor change what they give each period.
+ *
+ * The marketing FAQ has always promised donors can "change the amount or
+ * frequency" from their portal. The amount is the half that matters and the half
+ * that is safe: the billing cron reads `amount` at charge time, so the next
+ * scheduled gift simply uses the new figure. Frequency is deliberately not
+ * changed here — it would move the billing date under a donor who is mid-cycle,
+ * and the honest version of that is cancel-and-restart.
+ *
+ * Increases and decreases are both allowed; this is the donor's own money and
+ * their own decision.
+ */
+export async function updatePlanAmount(
+  _prev: PortalState,
+  formData: FormData
+): Promise<PortalState> {
+  const session = await requireDonor();
+  const parsed = planAmountSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    const e = formErrors(parsed.error);
+    return { error: e.message, fields: e.fields };
+  }
+  const { planId, amount } = parsed.data;
+
+  const before = await withTenant(session.orgId, async (tx) => {
+    const plan = await tx.recurringPlan.findFirst({
+      where: { id: planId, donorId: session.sub, status: { not: "cancelled" } },
+    });
+    if (!plan) return null;
+    await tx.recurringPlan.update({ where: { id: planId }, data: { amount } });
+    return Number(plan.amount);
+  });
+  if (before === null) return { error: NOT_YOURS.error };
+
+  // A donor querying "why did my gift change?" is answered by this.
+  await audit({
+    actor: { type: "donor", id: session.sub },
+    orgId: session.orgId,
+    action: "recurring_plan.amount_changed",
+    entityType: "recurring_plan",
+    entityId: planId,
+    before: { amount: before },
+    after: { amount },
+  });
+
+  revalidatePath("/portal/recurring");
+  revalidatePath("/portal");
+  return { ok: true };
+}

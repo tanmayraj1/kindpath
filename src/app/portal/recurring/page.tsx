@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { buttonVariants } from "@/components/ui/button";
 import { PlanControls } from "@/components/portal/plan-controls";
 import { UpdateCardButton } from "@/components/portal/update-card-button";
+import { ChangeAmountButton } from "@/components/portal/change-amount-button";
 import { FormAlert } from "@/components/ui/form-alert";
 import { requireDonor } from "@/lib/auth/guards";
 import { listDonorPlans } from "@/lib/queries/donor";
@@ -164,6 +165,13 @@ export default async function DonorRecurringPage({
                         <Td>
                           <div className="flex flex-col items-end gap-2">
                             <PlanControls planId={p.id} status={p.status} retryable={retryable} />
+                            {p.status !== "cancelled" && (
+                              <ChangeAmountButton
+                                planId={p.id}
+                                amount={p.amount}
+                                frequency={p.frequency}
+                              />
+                            )}
                             {hosted && p.status !== "cancelled" && (
                               <UpdateCardButton
                                 planId={p.id}

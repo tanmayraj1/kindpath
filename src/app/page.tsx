@@ -7,13 +7,35 @@ import { Pricing } from "@/components/marketing/pricing";
 import { Faq } from "@/components/marketing/faq";
 import { Cta } from "@/components/marketing/cta";
 import { Reveal } from "@/components/marketing/reveal";
-import { CountUp } from "@/components/marketing/count-up";
 
-const stats = [
-  { label: "Faith communities", value: 300, suffix: "+" },
-  { label: "Raised through KindPath", value: 12_000_000, compactCurrency: true },
-  { label: "Tax receipts issued", value: 480, suffix: "K" },
-  { label: "Uptime", value: 99.9, decimals: 1, suffix: "%" },
+/**
+ * Claims we can actually stand behind.
+ *
+ * This band previously presented four fabricated metrics as fact — "300+ faith
+ * communities", "$12,000,000 raised", "480K tax receipts issued", "99.9%
+ * uptime" — for a product with no customers yet. Beyond being untrue, inventing
+ * an uptime figure and a donation volume is the kind of claim a charity's board
+ * would reasonably rely on when choosing where to send donor money.
+ *
+ * These are properties of the software instead, each verifiable in this repo.
+ */
+const capabilities = [
+  {
+    label: "CRA-compliant receipts",
+    detail: "Every required field, gap-free serial numbers, split receipting for advantages.",
+  },
+  {
+    label: "Isolated by the database",
+    detail: "PostgreSQL row-level security, verified against the catalog before every deploy.",
+  },
+  {
+    label: "Your gateway, your money",
+    detail: "Donations settle directly to your own merchant account. We never hold donor funds.",
+  },
+  {
+    label: "Built for Canada",
+    detail: "PIPEDA and Quebec Law 25 data rights, CASL consent tracking, GST/HST by province.",
+  },
 ] as const;
 
 export default function HomePage() {
@@ -23,20 +45,13 @@ export default function HomePage() {
       <main className="flex-1">
         <Hero />
 
-        {/* trust / stats band */}
+        {/* what the software actually guarantees */}
         <section className="border-y border-border bg-secondary/40">
-          <div className="container grid grid-cols-2 gap-8 py-12 lg:grid-cols-4">
-            {stats.map((stat, i) => (
-              <Reveal key={stat.label} variant="up" delay={i * 90} className="text-center">
-                <p className="font-display text-3xl font-extrabold text-brand-600 sm:text-4xl">
-                  <CountUp
-                    value={stat.value}
-                    suffix={"suffix" in stat ? stat.suffix : ""}
-                    decimals={"decimals" in stat ? stat.decimals : 0}
-                    compactCurrency={"compactCurrency" in stat ? stat.compactCurrency : false}
-                  />
-                </p>
-                <p className="mt-1 text-sm text-muted-foreground">{stat.label}</p>
+          <div className="container grid gap-8 py-12 sm:grid-cols-2 lg:grid-cols-4">
+            {capabilities.map((item, i) => (
+              <Reveal key={item.label} variant="up" delay={i * 90}>
+                <p className="font-display text-base font-bold text-brand-600">{item.label}</p>
+                <p className="mt-1.5 text-sm text-muted-foreground">{item.detail}</p>
               </Reveal>
             ))}
           </div>

@@ -10,6 +10,7 @@ import {
   type CompleteState,
 } from "@/app/give/[slug]/actions";
 import { Input } from "@/components/ui/input";
+import { Field } from "@/components/ui/field";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { SubmitButton } from "@/components/auth/submit-button";
@@ -290,35 +291,32 @@ export function DonationFlow({
             <input type="hidden" name="campaignId" value={campaign?.id ?? "none"} />
             <input type="hidden" name="frequency" value={frequency} />
 
+            {/* The action returns every invalid field at once, because the card
+                is ALREADY charged by this point — sending the donor back around
+                for one problem at a time is not acceptable here. This form used
+                to discard `fields` and show only the summary line. */}
             <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="firstName">First name</Label>
-                <Input id="firstName" name="firstName" required />
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="lastName">Last name</Label>
-                <Input id="lastName" name="lastName" required />
-              </div>
+              <Field name="firstName" label="First name" required errors={completeState.fields} />
+              <Field name="lastName" label="Last name" required errors={completeState.fields} />
             </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" name="email" type="email" required />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="addressLine1">Address</Label>
-              <Input id="addressLine1" name="addressLine1" placeholder="Street address" required />
-            </div>
+            <Field name="email" label="Email" type="email" required errors={completeState.fields} />
+            <Field
+              name="addressLine1"
+              label="Address"
+              placeholder="Street address"
+              required
+              hint="Required by the CRA on an official donation receipt."
+              errors={completeState.fields}
+            />
             <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="city">City</Label>
-                <Input id="city" name="city" required />
-              </div>
+              <Field name="city" label="City" required errors={completeState.fields} />
               <div className="flex flex-col gap-2">
                 <Label htmlFor="province">Province</Label>
                 <select
                   id="province"
                   name="province"
                   defaultValue="ON"
+                  aria-invalid={completeState.fields?.province ? true : undefined}
                   className="flex h-11 w-full rounded-lg border border-input bg-background px-3.5 text-sm focus-visible:border-brand-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
                 >
                   {PROVINCES.map((p) => (
@@ -327,12 +325,18 @@ export function DonationFlow({
                     </option>
                   ))}
                 </select>
+                {completeState.fields?.province && (
+                  <p className="text-xs font-medium text-destructive">{completeState.fields.province}</p>
+                )}
               </div>
             </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="postalCode">Postal code</Label>
-              <Input id="postalCode" name="postalCode" placeholder="A1A 1A1" required />
-            </div>
+            <Field
+              name="postalCode"
+              label="Postal code"
+              placeholder="A1A 1A1"
+              required
+              errors={completeState.fields}
+            />
 
             <SubmitButton size="lg" className="mt-1 w-full">
               Get my receipt

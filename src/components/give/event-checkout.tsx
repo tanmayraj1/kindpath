@@ -6,6 +6,7 @@ import { Ticket, CreditCard, Lock, Loader2, AlertCircle, CheckCircle2 } from "lu
 import { authorizeCharge, beginHostedTicketPurchase } from "@/app/give/[slug]/actions";
 import { completeTicketPurchase, type TicketState } from "@/app/e/[slug]/[event]/actions";
 import { Input } from "@/components/ui/input";
+import { Field } from "@/components/ui/field";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { DemoPaymentNotice } from "./demo-payment-notice";
@@ -125,13 +126,19 @@ export function EventCheckout({
             <input type="hidden" name="ticketTypeId" value={ttId} />
             <input type="hidden" name="quantity" value={qty} />
             <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-2"><Label htmlFor="firstName">First name</Label><Input id="firstName" name="firstName" required /></div>
-              <div className="flex flex-col gap-2"><Label htmlFor="lastName">Last name</Label><Input id="lastName" name="lastName" required /></div>
+              <Field name="firstName" label="First name" required errors={state.fields} />
+              <Field name="lastName" label="Last name" required errors={state.fields} />
             </div>
-            <div className="flex flex-col gap-2"><Label htmlFor="email">Email</Label><Input id="email" name="email" type="email" required /></div>
-            <div className="flex flex-col gap-2"><Label htmlFor="addressLine1">Address</Label><Input id="addressLine1" name="addressLine1" required /></div>
+            <Field name="email" label="Email" type="email" required errors={state.fields} />
+            <Field
+              name="addressLine1"
+              label="Address"
+              required
+              hint="Required by the CRA on an official donation receipt."
+              errors={state.fields}
+            />
             <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-2"><Label htmlFor="city">City</Label><Input id="city" name="city" required /></div>
+              <Field name="city" label="City" required errors={state.fields} />
               <div className="flex flex-col gap-2">
                 <Label htmlFor="province">Province</Label>
                 <select id="province" name="province" defaultValue="ON" className="flex h-11 w-full rounded-lg border border-input bg-background px-3.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30">
@@ -139,7 +146,7 @@ export function EventCheckout({
                 </select>
               </div>
             </div>
-            <div className="flex flex-col gap-2"><Label htmlFor="postalCode">Postal code</Label><Input id="postalCode" name="postalCode" placeholder="A1A 1A1" required /></div>
+            <Field name="postalCode" label="Postal code" placeholder="A1A 1A1" required errors={state.fields} />
             <SubmitButton size="lg" className="w-full">Get my receipt</SubmitButton>
           </form>
         )}

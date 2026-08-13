@@ -16,7 +16,11 @@ const faqs = [
   },
   {
     q: "Can donors manage their own recurring donations?",
-    a: "Absolutely. Donors get a self-service portal where they can pause, change the amount or frequency, update their payment method, and download any past receipt — all without contacting your office.",
+    // Kept honest against what the portal actually does: pause, resume, cancel,
+    // change the amount, replace the card, export or erase their data, and
+    // download receipts. Changing FREQUENCY is not offered — it would move the
+    // billing date under a donor mid-cycle — so it is no longer claimed here.
+    a: "Absolutely. Donors get a self-service portal where they can pause or cancel, change their gift amount, replace the card it's paid with, update their details, and download any past receipt — all without contacting your office.",
   },
   {
     q: "How do payments work?",

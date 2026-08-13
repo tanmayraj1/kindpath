@@ -1,4 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/table";
 import { listFunds } from "@/lib/queries/org";
@@ -9,7 +10,7 @@ export default async function OrgFunds({ params }: { params: { id: string } }) {
     <Card>
       <CardContent className="p-6">
         {funds.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">No funds defined.</p>
+          <EmptyState title="No funds defined" body="This organization hasn't set up any funds for donors to designate gifts to." />
         ) : (
           <Table>
             <Thead>
