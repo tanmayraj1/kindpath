@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ListSearch, Pagination } from "@/components/ui/list-controls";
 import { CreatePledgeForm } from "@/components/dashboard/create-pledge-form";
 import { PledgeActions } from "@/components/dashboard/pledge-actions";
+import { EditPledgeButton } from "@/components/dashboard/entity-edit-buttons";
 import { requireOrgUser } from "@/lib/auth/guards";
 import { assertFeature } from "@/lib/access";
 import { listPledges } from "@/lib/queries/pledges";
@@ -98,7 +99,10 @@ export default async function PledgesPage({
                         <Badge variant={statusVariant[p.status] ?? "neutral"} className="capitalize">{p.status}</Badge>
                       </Td>
                       <Td>
-                        <PledgeActions id={p.id} status={p.status} />
+                        <div className="flex items-center justify-end gap-1">
+                          <EditPledgeButton pledge={p} campaigns={campaigns} />
+                          <PledgeActions id={p.id} status={p.status} />
+                        </div>
                       </Td>
                     </Tr>
                   ))}

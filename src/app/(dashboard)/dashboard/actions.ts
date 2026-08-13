@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { formErrors, type FieldErrors } from "@/lib/validation";
 import { z } from "zod";
 import { requireOrgUser, requireOrgAdmin } from "@/lib/auth/guards";
 import { withTenant } from "@/lib/tenant";
@@ -17,7 +18,7 @@ import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { audit } from "@/lib/audit";
 import { assertBillingActive } from "@/lib/access";
 
-export type ActionState = { error?: string; ok?: boolean };
+export type ActionState = { error?: string; ok?: boolean; fields?: FieldErrors };
 
 /**
  * Result of a one-shot mutation triggered from a button rather than a form.
@@ -36,6 +37,7 @@ const NOT_FOUND: MutationState = {
 
 // ---------------- team / staff management (org_admin only) ----------------
 export type TeamState = {
+  fields?: FieldErrors;
   error?: string;
   ok?: boolean;
   /** Single-use setup link, surfaced when email delivery is unavailable. */
@@ -1169,4 +1171,341 @@ export async function exportDonorRecord(donorId: string): Promise<PrivacyState &
     ip: clientIp(),
   });
   return { ok: true, json: JSON.stringify(data, null, 2) };
+}
+
+// ---------------- editing what was previously create-only ----------------
+/**
+ * Nine entity types could be created and never corrected: a fund, campaign,
+ * event, ticket type, membership plan, pledge, volunteer, pass, or team member.
+ * A ticket priced at $250 instead of $25, or an event dated to the wrong month,
+ * was permanent — the only remedy was to make a second one and leave the wrong
+ * one on the public page.
+ *
+ * Each editor below re-checks tenancy explicitly (`findFirst` inside
+ * `withTenant`) rather than trusting the id from the form, and reports when the
+ * row is gone instead of silently doing nothing.
+ */
+
+const editFundSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(2, "Fund name is required").max(120),
+  code: z.string().max(40).optional(),
+});
+
+export async function updateFund(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const session = await requireOrgUser();
+  const parsed = editFundSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    const e = formErrors(parsed.error);
+    return { error: e.message, fields: e.fields };
+  }
+  const d = parsed.data;
+
+  const ok = await withTenant(session.orgId, async (tx) => {
+    const fund = await tx.fund.findFirst({ where: { id: d.id } });
+    if (!fund) return false;
+    await tx.fund.update({
+      where: { id: d.id },
+      data: { name: d.name, code: d.code || null },
+    });
+    return true;
+  });
+  if (!ok) return { error: NOT_FOUND.error };
+  revalidatePath("/dashboard/funds");
+  return { ok: true };
+}
+
+/**
+ * Funds are archived, never deleted: donations and receipts reference them, and
+ * a receipt must keep showing the fund the gift was designated to.
+ */
+export async function setFundArchived(fundId: string, archived: boolean): Promise<MutationState> {
+  const session = await requireOrgUser();
+  const result = await withTenant(session.orgId, async (tx) => {
+    const fund = await tx.fund.findFirst({ where: { id: fundId } });
+    if (!fund) return "missing" as const;
+    if (archived) {
+      // Archiving the only place money can currently be designated would leave
+      // the giving page with nothing to select.
+      const remaining = await tx.fund.count({ where: { isActive: true, id: { not: fundId } } });
+      if (remaining === 0) return "last" as const;
+    }
+    await tx.fund.update({ where: { id: fundId }, data: { isActive: !archived } });
+    return "ok" as const;
+  });
+  if (result === "missing") return NOT_FOUND;
+  if (result === "last") {
+    return { error: "This is your only active fund. Create another one before archiving this." };
+  }
+  revalidatePath("/dashboard/funds");
+  return { ok: true };
+}
+
+const editEventSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(2, "Title is required").max(150),
+  description: z.string().max(2000).optional(),
+  location: z.string().max(200).optional(),
+  startsAt: z.string().optional(),
+  accent: z.string().max(8).optional(),
+});
+
+export async function updateEvent(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const session = await requireOrgUser();
+  const parsed = editEventSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    const e = formErrors(parsed.error);
+    return { error: e.message, fields: e.fields };
+  }
+  const d = parsed.data;
+
+  const ok = await withTenant(session.orgId, async (tx) => {
+    const ev = await tx.event.findFirst({ where: { id: d.id } });
+    if (!ev) return false;
+    await tx.event.update({
+      where: { id: d.id },
+      data: {
+        title: d.title,
+        description: d.description || null,
+        location: d.location || null,
+        startsAt: d.startsAt ? new Date(d.startsAt) : ev.startsAt,
+        accent: d.accent || ev.accent,
+      },
+    });
+    return true;
+  });
+  if (!ok) return { error: NOT_FOUND.error };
+  revalidatePath(`/dashboard/events/${d.id}`);
+  revalidatePath("/dashboard/events");
+  return { ok: true };
+}
+
+const editTicketTypeSchema = z.object({
+  id: z.string().min(1),
+  eventId: z.string().min(1),
+  name: z.string().min(1, "Name required").max(120),
+  price: z.coerce.number().min(1).max(1_000_000),
+  advantage: z.coerce.number().min(0).max(1_000_000).default(0),
+});
+
+export async function updateTicketType(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const session = await requireOrgUser();
+  const parsed = editTicketTypeSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    const e = formErrors(parsed.error);
+    return { error: e.message, fields: e.fields };
+  }
+  const d = parsed.data;
+  // The advantage is subtracted from the eligible amount on a tax receipt; if it
+  // met or exceeded the price the receipt would claim a gift of zero or less.
+  if (d.advantage >= d.price) return { error: "Advantage must be less than the price." };
+
+  const ok = await withTenant(session.orgId, async (tx) => {
+    const tt = await tx.ticketType.findFirst({ where: { id: d.id, eventId: d.eventId } });
+    if (!tt) return false;
+    await tx.ticketType.update({
+      where: { id: d.id },
+      data: { name: d.name, price: d.price, advantageValue: d.advantage },
+    });
+    return true;
+  });
+  if (!ok) return { error: NOT_FOUND.error };
+  revalidatePath(`/dashboard/events/${d.eventId}`);
+  return { ok: true };
+}
+
+const editMembershipPlanSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(2, "Name is required").max(120),
+  amount: z.coerce.number().min(1, "Set an amount").max(1_000_000),
+  frequency: z.enum(["weekly", "monthly", "quarterly", "annual"]),
+  description: z.string().max(300).optional(),
+});
+
+export async function updateMembershipPlan(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const session = await requireOrgUser();
+  const parsed = editMembershipPlanSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    const e = formErrors(parsed.error);
+    return { error: e.message, fields: e.fields };
+  }
+  const d = parsed.data;
+
+  const result = await withTenant(session.orgId, async (tx) => {
+    const plan = await tx.membershipPlan.findFirst({ where: { id: d.id } });
+    if (!plan) return { ok: false as const };
+    const members = await tx.recurringPlan.count({
+      where: { membershipPlanId: d.id, status: { in: ["active", "paused"] } },
+    });
+    await tx.membershipPlan.update({
+      where: { id: d.id },
+      data: {
+        name: d.name,
+        amount: d.amount,
+        frequency: d.frequency,
+        description: d.description || null,
+      },
+    });
+    // Existing members keep the amount they agreed to. Changing what they are
+    // billed without asking them would be taking money on new terms.
+    const repriced = Number(plan.amount) !== d.amount && members > 0;
+    return { ok: true as const, members, repriced };
+  });
+  if (!result.ok) return { error: NOT_FOUND.error };
+  revalidatePath("/dashboard/memberships");
+  return { ok: true };
+}
+
+const editCampaignSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(2, "Title is required").max(150),
+  goalAmount: z.coerce.number().min(1, "Set a goal amount").max(100_000_000),
+  fundId: z.string().optional(),
+  deadline: z.string().optional(),
+  accent: z.string().max(8).optional(),
+  description: z.string().max(4000).optional(),
+});
+
+export async function updateCampaign(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const session = await requireOrgUser();
+  const parsed = editCampaignSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    const e = formErrors(parsed.error);
+    return { error: e.message, fields: e.fields };
+  }
+  const d = parsed.data;
+
+  const ok = await withTenant(session.orgId, async (tx) => {
+    const c = await tx.campaign.findFirst({ where: { id: d.id } });
+    if (!c) return false;
+    await tx.campaign.update({
+      where: { id: d.id },
+      data: {
+        title: d.title,
+        goalAmount: d.goalAmount,
+        // The slug is intentionally NOT regenerated from the new title: it is in
+        // every link already shared, printed and emailed for this campaign.
+        fundId: d.fundId && d.fundId !== "none" ? d.fundId : null,
+        deadline: d.deadline ? new Date(d.deadline) : null,
+        accent: d.accent || c.accent,
+        description: d.description || null,
+      },
+    });
+    return true;
+  });
+  if (!ok) return { error: NOT_FOUND.error };
+  revalidatePath("/dashboard/campaigns");
+  revalidatePath(`/dashboard/campaigns/${d.id}`);
+  return { ok: true };
+}
+
+const editPledgeSchema = z.object({
+  id: z.string().min(1),
+  donorName: z.string().min(2, "Donor name is required").max(120),
+  donorEmail: z.string().email().max(254).optional().or(z.literal("")),
+  amount: z.coerce.number().min(1, "Set an amount").max(10_000_000),
+  campaignId: z.string().optional(),
+  dueDate: z.string().optional(),
+  note: z.string().max(500).optional(),
+});
+
+export async function updatePledge(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const session = await requireOrgUser();
+  const parsed = editPledgeSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    const e = formErrors(parsed.error);
+    return { error: e.message, fields: e.fields };
+  }
+  const d = parsed.data;
+
+  const ok = await withTenant(session.orgId, async (tx) => {
+    const p = await tx.pledge.findFirst({ where: { id: d.id } });
+    if (!p) return false;
+    await tx.pledge.update({
+      where: { id: d.id },
+      data: {
+        donorName: d.donorName,
+        donorEmail: d.donorEmail || null,
+        amount: d.amount,
+        campaignId: d.campaignId && d.campaignId !== "none" ? d.campaignId : null,
+        dueDate: d.dueDate ? new Date(d.dueDate) : null,
+        note: d.note || null,
+      },
+    });
+    return true;
+  });
+  if (!ok) return { error: NOT_FOUND.error };
+  revalidatePath("/dashboard/pledges");
+  return { ok: true };
+}
+
+const editVolunteerSchema = z.object({
+  id: z.string().min(1),
+  firstName: z.string().min(1, "First name is required").max(100),
+  lastName: z.string().min(1, "Last name is required").max(100),
+  email: z.string().email("A valid email is required").max(254),
+  phone: z.string().max(40).optional(),
+  role: z.string().max(120).optional(),
+});
+
+export async function updateVolunteer(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const session = await requireOrgUser();
+  const parsed = editVolunteerSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    const e = formErrors(parsed.error);
+    return { error: e.message, fields: e.fields };
+  }
+  const d = parsed.data;
+
+  const ok = await withTenant(session.orgId, async (tx) => {
+    const v = await tx.volunteer.findFirst({ where: { id: d.id } });
+    if (!v) return false;
+    await tx.volunteer.update({
+      where: { id: d.id },
+      data: {
+        firstName: d.firstName,
+        lastName: d.lastName,
+        email: d.email,
+        phone: d.phone || null,
+        role: d.role || null,
+      },
+    });
+    return true;
+  });
+  if (!ok) return { error: NOT_FOUND.error };
+  revalidatePath("/dashboard/volunteers");
+  return { ok: true };
+}
+
+const editTeamMemberSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(2, "Name is required").max(120),
+});
+
+/**
+ * Correct a team member's display name. The email is deliberately not editable
+ * here: it is the login identity, and changing it silently would lock someone
+ * out of an account they can still see listed as theirs.
+ */
+export async function updateTeamMember(_prev: TeamState, formData: FormData): Promise<TeamState> {
+  const session = await requireOrgAdmin();
+  const parsed = editTeamMemberSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    const e = formErrors(parsed.error);
+    return { error: e.message, fields: e.fields };
+  }
+  const d = parsed.data;
+
+  const ok = await withTenant(session.orgId, async (tx) => {
+    const u = await tx.orgUser.findFirst({ where: { id: d.id } });
+    if (!u) return false;
+    await tx.orgUser.update({ where: { id: d.id }, data: { name: d.name } });
+    return true;
+  });
+  if (!ok) return { error: NOT_FOUND.error };
+  revalidatePath("/dashboard/team");
+  return { ok: true };
 }

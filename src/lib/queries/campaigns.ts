@@ -35,6 +35,10 @@ export function listCampaigns(orgId: string) {
       status: c.status,
       deadline: c.deadline,
       accent: c.accent,
+      // Needed to prefill the editor; a form that silently dropped the fund or
+      // description on save would be worse than no editor at all.
+      fundId: c.fundId,
+      description: c.description,
     }));
   });
 }

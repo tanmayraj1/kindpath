@@ -38,6 +38,9 @@ export function listPledges(orgId: string, page?: PageParams) {
         amount: Number(p.amount),
         status: p.status,
         campaign: p.campaign?.title ?? null,
+        // Needed to prefill the editor's campaign select; without it, editing a
+        // pledge would silently detach it from its campaign.
+        campaignId: p.campaignId,
         dueDate: p.dueDate,
       note: p.note,
     }));

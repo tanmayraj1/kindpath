@@ -3,6 +3,8 @@ import { Megaphone, ExternalLink } from "lucide-react";
 import { Topbar } from "@/components/dashboard/topbar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { EditCampaignButton } from "@/components/dashboard/entity-edit-buttons";
+import { CampaignStatusButton } from "@/components/dashboard/campaign-status-button";
 import { Progress } from "@/components/ui/progress";
 import { EmptyState } from "@/components/ui/empty-state";
 import { CreateCampaignForm } from "@/components/dashboard/create-campaign-form";
@@ -78,6 +80,12 @@ export default async function CampaignsPage() {
                     >
                       View public page <ExternalLink className="size-3" />
                     </a>
+                    {/* A campaign could be created and never corrected: a typo in
+                        the title or a wrong goal was permanent on a public page. */}
+                    <div className="flex items-center justify-end gap-1 border-t border-border pt-3">
+                      <EditCampaignButton campaign={c} funds={funds} />
+                      <CampaignStatusButton id={c.id} status={c.status} />
+                    </div>
                   </CardContent>
                 </Card>
               );

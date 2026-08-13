@@ -8,6 +8,7 @@ import { Table, Thead, Th, Tr, Td } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { AddTicketTypeForm } from "@/components/dashboard/add-ticket-type-form";
 import { EventStatusButton } from "@/components/dashboard/event-status-button";
+import { EditEventButton, EditTicketTypeButton } from "@/components/dashboard/entity-edit-buttons";
 import { requireOrgUser } from "@/lib/auth/guards";
 import { assertFeature } from "@/lib/access";
 import { getEvent } from "@/lib/queries/events";
@@ -50,6 +51,7 @@ export default async function EventDetail({ params }: { params: { id: string } }
             <a href={`${appUrl}/e/${org?.slug}/${e.slug}`} target="_blank" rel="noopener" className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3.5 text-sm font-medium hover:bg-secondary">
               <ExternalLink className="size-4" /> Public page
             </a>
+            <EditEventButton event={e} />
             <EventStatusButton id={e.id} status={e.status} />
           </div>
         </div>
@@ -79,6 +81,7 @@ export default async function EventDetail({ params }: { params: { id: string } }
                 <Th className="text-right">Price</Th>
                 <Th className="text-right">Advantage</Th>
                 <Th className="text-right">Eligible</Th>
+                <Th className="text-right">Edit</Th>
               </Thead>
               <tbody>
                 {e.ticketTypes.map((t) => (
@@ -87,6 +90,16 @@ export default async function EventDetail({ params }: { params: { id: string } }
                     <Td className="text-right">{formatCAD(t.price, { maximumFractionDigits: 0 })}</Td>
                     <Td className="text-right text-muted-foreground">{formatCAD(t.advantage, { maximumFractionDigits: 0 })}</Td>
                     <Td className="text-right font-medium">{formatCAD(t.price - t.advantage, { maximumFractionDigits: 0 })}</Td>
+                    <Td>
+                      {/* A mistyped ticket price used to be permanent — the only
+                          remedy was a second ticket type beside the wrong one. */}
+                      <div className="flex justify-end">
+                        <EditTicketTypeButton
+                          eventId={e.id}
+                          ticket={{ id: t.id, name: t.name, price: t.price, advantageValue: t.advantage }}
+                        />
+                      </div>
+                    </Td>
                   </Tr>
                 ))}
               </tbody>

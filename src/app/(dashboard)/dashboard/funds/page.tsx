@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { CreateFundForm } from "@/components/dashboard/create-fund-form";
+import { FundRowActions } from "@/components/dashboard/fund-row-actions";
 import { requireOrgUser } from "@/lib/auth/guards";
 import { assertFeature } from "@/lib/access";
 import { listFunds } from "@/lib/queries/org";
@@ -50,6 +51,7 @@ export default async function FundsPage() {
                   <Th>Code</Th>
                   <Th className="text-right">Donations</Th>
                   <Th className="text-right">Status</Th>
+                  <Th className="text-right">Actions</Th>
                 </Thead>
                 <tbody>
                   {funds.map((f) => (
@@ -61,6 +63,9 @@ export default async function FundsPage() {
                         <Badge variant={f.isActive ? "success" : "neutral"}>
                           {f.isActive ? "Active" : "Inactive"}
                         </Badge>
+                      </Td>
+                      <Td>
+                        <FundRowActions fund={f} />
                       </Td>
                     </Tr>
                   ))}

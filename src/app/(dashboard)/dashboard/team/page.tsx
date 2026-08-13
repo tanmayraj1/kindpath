@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/table";
 import { InviteTeamForm } from "@/components/dashboard/invite-team-form";
 import { TeamActions } from "@/components/dashboard/team-actions";
+import { EditTeamMemberButton } from "@/components/dashboard/entity-edit-buttons";
 import { requireOrgAdmin } from "@/lib/auth/guards";
 import { listTeamMembers } from "@/lib/queries/org";
 
@@ -66,6 +67,9 @@ export default async function TeamPage() {
                       </Badge>
                     </Td>
                     <Td>
+                      <div className="flex items-center justify-end gap-1">
+                        {/* A misspelled name on a team member was permanent. */}
+                        <EditTeamMemberButton member={m} />
                       <TeamActions
                         userId={m.id}
                         email={m.email}
@@ -73,6 +77,7 @@ export default async function TeamPage() {
                         status={m.status}
                         isSelf={m.id === session.sub}
                       />
+                      </div>
                     </Td>
                   </Tr>
                 ))}

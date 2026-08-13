@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ListSearch, Pagination } from "@/components/ui/list-controls";
 import { AddVolunteerForm } from "@/components/dashboard/add-volunteer-form";
+import { EditVolunteerButton } from "@/components/dashboard/entity-edit-buttons";
 import {
   VolunteerRowActions,
   IssuePassForm,
@@ -100,6 +101,7 @@ export default async function VolunteersPage({
                         {v.role ? ` · ${v.role}` : ""}
                       </p>
                     </div>
+                    <EditVolunteerButton volunteer={v} />
                     <VolunteerRowActions volunteerId={v.id} status={v.status} />
                   </div>
 

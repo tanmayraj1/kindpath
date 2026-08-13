@@ -6,6 +6,8 @@ import { Table, Thead, Th, Tr, Td } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ListSearch, Pagination } from "@/components/ui/list-controls";
 import { CreateMembershipForm } from "@/components/dashboard/create-membership-form";
+import { EditMembershipPlanButton } from "@/components/dashboard/entity-edit-buttons";
+import { MembershipPlanToggle } from "@/components/dashboard/membership-plan-toggle";
 import { requireOrgUser } from "@/lib/auth/guards";
 import { assertFeature } from "@/lib/access";
 import { listMembershipPlans, listMembers } from "@/lib/queries/memberships";
@@ -66,6 +68,7 @@ export default async function MembershipsPage({
                   <Th className="text-right">Price</Th>
                   <Th className="text-right">Members</Th>
                   <Th className="text-right">Status</Th>
+                  <Th className="text-right">Actions</Th>
                 </Thead>
                 <tbody>
                   {plans.map((p) => (
@@ -79,6 +82,12 @@ export default async function MembershipsPage({
                       <Td className="text-right text-muted-foreground">{p.members}</Td>
                       <Td className="text-right">
                         <Badge variant={p.isActive ? "success" : "neutral"}>{p.isActive ? "Active" : "Inactive"}</Badge>
+                      </Td>
+                      <Td>
+                        <div className="flex items-center justify-end gap-1">
+                          <EditMembershipPlanButton plan={p} members={p.members} />
+                          <MembershipPlanToggle planId={p.id} name={p.name} isActive={p.isActive} members={p.members} />
+                        </div>
                       </Td>
                     </Tr>
                   ))}
