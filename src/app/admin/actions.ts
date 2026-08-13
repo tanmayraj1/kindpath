@@ -517,3 +517,157 @@ export async function runSubscriptionCycleNow(): Promise<InvoiceState> {
     return { error: "The cycle failed to run. The error has been logged." };
   }
 }
+
+// ---- org user management (support) ----
+/**
+ * Support could only reset a password here. An organization that had locked
+ * itself out — its one admin disabled, or the only admin account belonging to
+ * someone who has left — could not be recovered at all: there was no way to
+ * invite a new admin, promote an existing user, or re-enable a disabled one.
+ * Those three actions are what make an org recoverable, so they belong here.
+ */
+
+const adminInviteSchema = z.object({
+  orgId: z.string().min(1),
+  name: z.string().min(2, "Name is required").max(120),
+  email: z.string().email("Valid email required").max(254),
+  role: z.enum(["org_admin", "signatory", "staff"]),
+});
+
+export async function adminInviteOrgUser(
+  _prev: AdminState,
+  formData: FormData
+): Promise<AdminState> {
+  const admin = await requirePlatformAdmin();
+  const parsed = adminInviteSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    const e = formErrors(parsed.error);
+    return { error: e.message, fields: e.fields };
+  }
+  const d = parsed.data;
+
+  const org = await adminDb.organization.findUnique({ where: { id: d.orgId } });
+  if (!org) return { error: "Organization not found." };
+
+  // Login resolves an account by email alone, so a duplicate would make sign-in
+  // ambiguous across organizations.
+  const existing = await adminDb.orgUser.findFirst({ where: { email: d.email } });
+  if (existing) {
+    return {
+      error:
+        existing.orgId === d.orgId
+          ? "That email already belongs to a user in this organization."
+          : "That email is already used by a user in another organization.",
+    };
+  }
+
+  const user = await adminDb.orgUser.create({
+    data: {
+      orgId: d.orgId,
+      email: d.email,
+      name: d.name,
+      role: d.role,
+      status: "active",
+      passwordHash: await unusablePasswordHash(),
+      mustChangePassword: true,
+    },
+  });
+
+  const invite = await sendInvite({
+    principal: "org",
+    principalId: user.id,
+    orgId: d.orgId,
+    email: d.email,
+    name: d.name,
+    orgName: org.name,
+    brandColor: org.primaryColor,
+    logoUrl: org.logoUrl,
+    purpose: "invite",
+  });
+
+  await auditLog({
+    actor: { type: "platform_admin", id: admin.sub },
+    orgId: d.orgId,
+    action: "admin.user_invited",
+    entityType: "org_user",
+    entityId: user.id,
+    after: { email: d.email, role: d.role },
+    ip: clientIp(),
+  });
+
+  revalidatePath(`/admin/organizations/${d.orgId}/users`);
+  return { ok: true, inviteUrl: invite.url, emailed: invite.emailed };
+}
+
+export async function adminSetOrgUserRole(
+  userId: string,
+  role: "org_admin" | "signatory" | "staff"
+): Promise<AdminState> {
+  const admin = await requirePlatformAdmin();
+  const user = await adminDb.orgUser.findUnique({ where: { id: userId } });
+  if (!user) return { error: "User not found." };
+
+  // Demoting the last active admin is how an organization locks itself out.
+  if (user.role === "org_admin" && role !== "org_admin") {
+    const otherAdmins = await adminDb.orgUser.count({
+      where: { orgId: user.orgId, role: "org_admin", status: "active", id: { not: userId } },
+    });
+    if (otherAdmins === 0) {
+      return { error: "This is the organization's only active admin. Promote someone else first." };
+    }
+  }
+
+  await adminDb.orgUser.update({ where: { id: userId }, data: { role } });
+  await auditLog({
+    actor: { type: "platform_admin", id: admin.sub },
+    orgId: user.orgId,
+    action: "admin.user_role_changed",
+    entityType: "org_user",
+    entityId: userId,
+    before: { role: user.role },
+    after: { role },
+    ip: clientIp(),
+  });
+  revalidatePath(`/admin/organizations/${user.orgId}/users`);
+  return { ok: true };
+}
+
+export async function adminSetOrgUserStatus(
+  userId: string,
+  status: "active" | "disabled"
+): Promise<AdminState> {
+  const admin = await requirePlatformAdmin();
+  const user = await adminDb.orgUser.findUnique({ where: { id: userId } });
+  if (!user) return { error: "User not found." };
+
+  if (status === "disabled" && user.role === "org_admin") {
+    const otherAdmins = await adminDb.orgUser.count({
+      where: { orgId: user.orgId, role: "org_admin", status: "active", id: { not: userId } },
+    });
+    if (otherAdmins === 0) {
+      return {
+        error:
+          "This is the organization's only active admin — disabling them would lock the organization out. Invite or promote another admin first.",
+      };
+    }
+  }
+
+  await adminDb.orgUser.update({ where: { id: userId }, data: { status } });
+
+  // Sessions are stateless JWTs valid for 7 days: without bumping tokenVersion a
+  // disabled account keeps full access — including donor PII — for up to a week.
+  if (status === "disabled") await revokeSessions("org", userId);
+
+  await auditLog({
+    actor: { type: "platform_admin", id: admin.sub },
+    orgId: user.orgId,
+    action: status === "disabled" ? "admin.user_disabled" : "admin.user_enabled",
+    entityType: "org_user",
+    entityId: userId,
+    before: { status: user.status },
+    after: { status },
+    ip: clientIp(),
+  });
+  revalidatePath(`/admin/organizations/${user.orgId}/users`);
+  return { ok: true };
+}

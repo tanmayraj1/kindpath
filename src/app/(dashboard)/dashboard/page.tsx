@@ -14,6 +14,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { cn, formatCAD } from "@/lib/utils";
 import { requireOrgUser } from "@/lib/auth/guards";
 import { getOrgDashboard } from "@/lib/queries/org-dashboard";
+import { countDeliveryFailures } from "@/lib/queries/comms";
 
 const fundColors = ["bg-brand-500", "bg-accent", "bg-success", "bg-warning", "bg-brand-300"];
 
@@ -27,7 +28,13 @@ const statusVariant: Record<string, "success" | "destructive" | "warning" | "neu
 
 export default async function DashboardPage() {
   const session = await requireOrgUser();
-  const data = await getOrgDashboard(session.orgId);
+  // countDeliveryFailures existed with no caller. An undelivered tax receipt is
+  // something the organization has to act on, so it belongs on the page they
+  // actually open — not only on the communications page they may never visit.
+  const [data, undelivered] = await Promise.all([
+    getOrgDashboard(session.orgId),
+    countDeliveryFailures(session.orgId),
+  ]);
 
   const stats = [
     { label: "Raised this month", value: formatCAD(data.stats.raisedThisMonth), icon: TrendingUp },
@@ -49,6 +56,24 @@ export default async function DashboardPage() {
         }
       />
       <main className="flex flex-col gap-6 p-6">
+        {undelivered > 0 && (
+          <Link
+            href="/dashboard/communications"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/40 bg-warning/5 px-4 py-3 hover:bg-warning/10"
+          >
+            <div>
+              <p className="text-sm font-semibold">
+                {undelivered} message{undelivered === 1 ? "" : "s"} didn&apos;t reach{" "}
+                {undelivered === 1 ? "its recipient" : "their recipients"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Donors are missing receipts they&apos;re owed. Review and send them again.
+              </p>
+            </div>
+            <span className={buttonVariants({ variant: "outline", size: "sm" })}>Review</span>
+          </Link>
+        )}
+
         {!data.org.onboardedAt && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand-200 bg-brand-50/60 px-4 py-3">
             <div>

@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/table";
 import { getDeliveryFailures } from "@/lib/queries/comms";
+import { ResendMessageButton } from "@/components/dashboard/resend-message-button";
 
 /**
  * Receipts and billing notices that never reached the donor.
@@ -27,8 +28,8 @@ export async function DeliveryFailures({ orgId }: { orgId: string }) {
       <CardContent className="flex flex-col gap-4">
         <p className="text-sm text-muted-foreground">
           These donors have a receipt or billing notice on file that was never delivered. Their
-          receipt is still valid and downloadable from the Receipts page — send it to them directly,
-          or fix the address on the donor record and re-issue.
+          receipt is still valid and downloadable from the Receipts page. Try again below — if it
+          fails a second time, correct the address on the donor&apos;s record first.
         </p>
         <Table>
           <Thead>
@@ -36,6 +37,7 @@ export async function DeliveryFailures({ orgId }: { orgId: string }) {
             <Th>Message</Th>
             <Th>Date</Th>
             <Th className="text-right">Why</Th>
+            <Th className="text-right">Retry</Th>
           </Thead>
           <tbody>
             {rows.map((r) => (
@@ -63,6 +65,11 @@ export async function DeliveryFailures({ orgId }: { orgId: string }) {
                       {r.error}
                     </span>
                   )}
+                </Td>
+                <Td>
+                  <div className="flex justify-end">
+                    <ResendMessageButton notificationId={r.id} />
+                  </div>
                 </Td>
               </Tr>
             ))}

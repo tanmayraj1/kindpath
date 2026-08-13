@@ -11,6 +11,7 @@ import { adminDb } from "@/lib/db";
 import { nextReceiptSerial, formatAddress } from "@/lib/receipts";
 import { queueReceiptEmail, flushEmails } from "@/lib/notifications";
 import { emailLayout, escapeHtml } from "@/lib/email";
+import { formatCAD } from "@/lib/utils";
 import { unusablePasswordHash, sendInvite } from "@/lib/auth/invite";
 import { revokeSessions } from "@/lib/auth/revocation";
 
@@ -1508,4 +1509,86 @@ export async function updateTeamMember(_prev: TeamState, formData: FormData): Pr
   if (!ok) return { error: NOT_FOUND.error };
   revalidatePath("/dashboard/team");
   return { ok: true };
+}
+
+// ---------------- retry an undelivered message ----------------
+/**
+ * Re-send a receipt or notice that never reached the donor.
+ *
+ * The delivery-failures panel listed what had failed and told the user to
+ * "re-issue" it — with no mechanism anywhere in the product to do so, and
+ * `resendNotification` already written and called from nowhere. A donor whose
+ * receipt email bounced is owed a tax receipt they don't have; this is the
+ * button that gets it to them.
+ *
+ * The email is rebuilt from the receipt rather than replayed from storage: the
+ * original body is not kept, and the signed receipt link in it is time-limited,
+ * so a stored copy would resend a dead link.
+ */
+export async function resendFailedMessage(notificationId: string): Promise<MutationState> {
+  const session = await requireOrgUser();
+
+  if (!(await rateLimit(`resend:${session.orgId}`, 30, 60_000)).ok) {
+    return { error: "Too many re-sends. Please wait a minute." };
+  }
+
+  const ctx = await withTenant(session.orgId, async (tx) => {
+    const n = await tx.notification.findFirst({ where: { id: notificationId } });
+    if (!n || n.status === "sent" || !n.donorId) return null;
+
+    const [donor, org] = await Promise.all([
+      tx.donor.findFirst({ where: { id: n.donorId } }),
+      tx.organization.findUnique({ where: { id: session.orgId } }),
+    ]);
+    if (!donor || !org) return null;
+
+    // An erased donor's address is a placeholder on a reserved domain; sending
+    // there would bounce forever and re-create the same failed row.
+    if (donor.anonymizedAt) return "anonymized" as const;
+
+    const receipt = await tx.receipt.findFirst({
+      where: { donorId: donor.id, status: "issued" },
+      orderBy: { dateIssued: "desc" },
+    });
+    return { donor, org, receipt };
+  });
+
+  if (ctx === "anonymized") {
+    return { error: "This donor asked to be removed, so we can't email them again." };
+  }
+  if (!ctx) {
+    return { error: "That message can't be re-sent — it may already have been delivered." };
+  }
+  if (!ctx.receipt) {
+    return { error: "There's no issued receipt for this donor to re-send." };
+  }
+
+  const { signedReceiptUrl } = await import("@/lib/receipt-links");
+  const { resendNotification } = await import("@/lib/notifications");
+  const official = ctx.receipt.documentType === "official";
+
+  const html = emailLayout({
+    heading: `Thank you for your gift, ${escapeHtml(ctx.donor.firstName)}!`,
+    body: `Your ${official ? "official donation receipt" : "payment confirmation"} for
+      <strong>${formatCAD(Number(ctx.receipt.eligibleAmount))}</strong> is ready.
+      Receipt number <strong>${escapeHtml(ctx.receipt.serialNumber)}</strong>.`,
+    cta: { label: "Download receipt (PDF)", url: signedReceiptUrl(ctx.receipt.id) },
+    brand: { orgName: ctx.org.name, brandColor: ctx.org.primaryColor, logoUrl: ctx.org.logoUrl },
+  });
+
+  const sent = await resendNotification(notificationId, html, ctx.donor.email);
+
+  await audit({
+    actor: { type: "org_user", id: session.sub },
+    orgId: session.orgId,
+    action: "notification.resent",
+    entityType: "notification",
+    entityId: notificationId,
+    after: { delivered: sent },
+  });
+
+  revalidatePath("/dashboard/communications");
+  return sent
+    ? { ok: true }
+    : { error: "It failed again. Check the donor's email address on their record, then try once more." };
 }
