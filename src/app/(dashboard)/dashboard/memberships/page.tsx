@@ -4,11 +4,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ListSearch, Pagination } from "@/components/ui/list-controls";
 import { CreateMembershipForm } from "@/components/dashboard/create-membership-form";
 import { requireOrgUser } from "@/lib/auth/guards";
 import { assertFeature } from "@/lib/access";
 import { listMembershipPlans, listMembers } from "@/lib/queries/memberships";
 import { getOrg } from "@/lib/queries/org";
+import { parsePageParams } from "@/lib/pagination";
 import { formatCAD } from "@/lib/utils";
 
 export const metadata = { title: "Memberships" };
@@ -21,12 +23,16 @@ const statusVariant: Record<string, "success" | "warning" | "neutral" | "destruc
   suspended: "destructive",
 };
 
-export default async function MembershipsPage() {
+export default async function MembershipsPage({
+  searchParams,
+}: {
+  searchParams?: { page?: string; q?: string; size?: string };
+}) {
   const session = await requireOrgUser();
   await assertFeature(session.orgId, "memberships");
   const [plans, members, org] = await Promise.all([
     listMembershipPlans(session.orgId),
-    listMembers(session.orgId),
+    listMembers(session.orgId, parsePageParams(searchParams)),
     getOrg(session.orgId),
   ]);
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
@@ -84,11 +90,16 @@ export default async function MembershipsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Members ({members.length})</CardTitle>
+            <CardTitle>Members ({members.total})</CardTitle>
+            <ListSearch action="/dashboard/memberships" q={members.q} placeholder="Member name or email…" label="Search members" />
           </CardHeader>
           <CardContent>
-            {members.length === 0 ? (
-              <EmptyState icon={<Users2 className="size-5" />} title="No members yet" body="Share your join page to enroll members." />
+            {members.rows.length === 0 ? (
+              <EmptyState
+                icon={<Users2 className="size-5" />}
+                title={members.q ? "No members match that search" : "No members yet"}
+                body={members.q ? "Try a different name or email address." : "Share your join page to enroll members."}
+              />
             ) : (
               <Table>
                 <Thead>
@@ -100,7 +111,7 @@ export default async function MembershipsPage() {
                   <Th className="text-right">Status</Th>
                 </Thead>
                 <tbody>
-                  {members.map((m) => (
+                  {members.rows.map((m) => (
                     <Tr key={m.id}>
                       <Td className="font-medium">{m.member}</Td>
                       <Td className="text-muted-foreground">{m.plan}</Td>
@@ -117,6 +128,7 @@ export default async function MembershipsPage() {
                 </tbody>
               </Table>
             )}
+            <Pagination basePath="/dashboard/memberships" data={members} noun="members" />
           </CardContent>
         </Card>
       </main>

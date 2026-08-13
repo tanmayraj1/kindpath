@@ -14,7 +14,7 @@ import { captureError, log } from "@/lib/observability";
 /** A run older than this with no success means something is wrong. */
 export const STALE_AFTER_HOURS = 36; // daily job + a generous margin
 
-export type JobName = "billing";
+export type JobName = "billing" | "campaigns";
 
 export async function startJobRun(job: JobName): Promise<string | null> {
   try {

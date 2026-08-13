@@ -32,11 +32,18 @@ export async function getReportData(orgId: string) {
     const now = new Date();
     const since = new Date(now.getFullYear(), now.getMonth() - 11, 1);
 
-    const [donations, topSums, donors] = await Promise.all([
-      tx.donation.findMany({
-        where: { status: "succeeded", receivedAt: { gte: since } },
-        select: { eligibleAmount: true, receivedAt: true, donorId: true },
-      }),
+    // Bucket in Postgres, not in JS. This used to load EVERY donation of the last
+    // twelve months and EVERY donor row just to produce twelve numbers, five names
+    // and a count — inside `withTenant`'s single 5s transaction, so a charity with
+    // real history didn't get a slow report, it got P2028 and no report at all.
+    const [monthRows, topSums, totalDonors] = await Promise.all([
+      tx.$queryRaw<{ month: Date; total: number }[]>`
+        SELECT date_trunc('month', received_at) AS month,
+               SUM(eligible_amount)::float8      AS total
+        FROM donations
+        WHERE status = 'succeeded' AND received_at >= ${since}
+        GROUP BY 1
+      `,
       tx.donation.groupBy({
         by: ["donorId"],
         _sum: { eligibleAmount: true },
@@ -44,29 +51,39 @@ export async function getReportData(orgId: string) {
         orderBy: { _sum: { eligibleAmount: "desc" } },
         take: 5,
       }),
-      tx.donor.findMany({ select: { id: true, firstName: true, lastName: true } }),
+      tx.donor.count(),
     ]);
 
-    // bucket into the last 12 calendar months
+    const totalByMonth = new Map(
+      monthRows.map((r) => {
+        const d = new Date(r.month);
+        return [`${d.getFullYear()}-${d.getMonth()}`, Number(r.total)];
+      })
+    );
     const months: { label: string; total: number }[] = [];
     for (let i = 11; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      months.push({ label: d.toLocaleDateString("en-CA", { month: "short" }), total: 0 });
-    }
-    const baseIdx = (d: Date) =>
-      (d.getFullYear() - since.getFullYear()) * 12 + (d.getMonth() - since.getMonth());
-    for (const dn of donations) {
-      const idx = baseIdx(new Date(dn.receivedAt));
-      if (idx >= 0 && idx < 12) months[idx].total += Number(dn.eligibleAmount);
+      months.push({
+        label: d.toLocaleDateString("en-CA", { month: "short" }),
+        total: totalByMonth.get(`${d.getFullYear()}-${d.getMonth()}`) ?? 0,
+      });
     }
 
-    const nameById = new Map(donors.map((d) => [d.id, `${d.firstName} ${d.lastName}`]));
+    // Only the five donors actually shown need names, rather than the whole table.
+    const topIds = topSums.map((t) => t.donorId);
+    const topNames = topIds.length
+      ? await tx.donor.findMany({
+          where: { id: { in: topIds } },
+          select: { id: true, firstName: true, lastName: true },
+        })
+      : [];
+    const nameById = new Map(topNames.map((d) => [d.id, `${d.firstName} ${d.lastName}`]));
     const topDonors = topSums.map((t) => ({
       name: nameById.get(t.donorId) ?? "Donor",
       total: Number(t._sum.eligibleAmount ?? 0),
     }));
 
-    return { months, topDonors, totalDonors: donors.length };
+    return { months, topDonors, totalDonors };
   });
 }
 

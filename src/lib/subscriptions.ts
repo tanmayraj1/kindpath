@@ -142,6 +142,17 @@ async function notifyOrgAdmins(
  *   active, next billing date up → invoice   + email
  *   past_due beyond GRACE_DAYS   → cancelled (access restricted)
  */
+/**
+ * Subscriptions handled per run.
+ *
+ * Each stage below sends email per row, so an unbounded fetch makes one cron
+ * invocation grow with the platform until it exceeds the function timeout and is
+ * killed partway — redoing the completed work on the next run. Every stage
+ * *changes the status it selected on*, so a bounded batch is self-advancing:
+ * whatever is left simply no longer matches, and the next run picks it up.
+ */
+const CYCLE_BATCH_SIZE = 100;
+
 export async function runSubscriptionCycle(now = new Date()): Promise<SubscriptionRunSummary> {
   const summary: SubscriptionRunSummary = {
     trialsExpired: 0,
@@ -155,6 +166,8 @@ export async function runSubscriptionCycle(now = new Date()): Promise<Subscripti
   const expiredTrials = await adminDb.subscription.findMany({
     where: { status: "trialing", trialEndsAt: { lte: now } },
     include: { org: { select: { id: true, name: true } } },
+    orderBy: { id: "asc" },
+    take: CYCLE_BATCH_SIZE,
   });
   for (const sub of expiredTrials) {
     try {
@@ -186,6 +199,8 @@ export async function runSubscriptionCycle(now = new Date()): Promise<Subscripti
   // 2. Active subscriptions due for their next invoice.
   const due = await adminDb.subscription.findMany({
     where: { status: "active", nextBillingDate: { lte: now } },
+    orderBy: { id: "asc" },
+    take: CYCLE_BATCH_SIZE,
   });
   for (const sub of due) {
     try {
@@ -208,6 +223,8 @@ export async function runSubscriptionCycle(now = new Date()): Promise<Subscripti
   const graceCutoff = new Date(now.getTime() - GRACE_DAYS * DAY_MS);
   const overdue = await adminDb.subscription.findMany({
     where: { status: "past_due", currentPeriodStart: { lte: graceCutoff } },
+    orderBy: { id: "asc" },
+    take: CYCLE_BATCH_SIZE,
   });
   for (const sub of overdue) {
     try {

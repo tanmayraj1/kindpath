@@ -72,16 +72,40 @@ export async function getOrgBilling(orgId: string): Promise<OrgBilling | null> {
 
 /** Every org's billing position, for God Mode. */
 export async function listPlatformBilling() {
-  const orgs = await adminDb.organization.findMany({
-    include: { subscription: true, subscriptionInvoices: { orderBy: { issuedAt: "desc" } } },
-    orderBy: { name: "asc" },
+  // Only the newest invoice per org is displayed, but this used to load EVERY
+  // invoice ever issued to EVERY organization in order to show it — the one query
+  // in God Mode that grows without bound as the platform succeeds. The count and
+  // the outstanding balance are now aggregates, and only the newest row is read.
+  const [orgs, totals, newest] = await Promise.all([
+    adminDb.organization.findMany({ include: { subscription: true }, orderBy: { name: "asc" } }),
+    adminDb.subscriptionInvoice.groupBy({
+      by: ["orgId"],
+      _count: { _all: true },
+      _sum: { total: true },
+    }),
+    adminDb.$queryRaw<
+      { org_id: string; id: string; invoice_number: string; total: number; status: string; issued_at: Date }[]
+    >`
+      SELECT DISTINCT ON (org_id)
+             org_id, id, invoice_number, total::float8 AS total, status, issued_at
+      FROM subscription_invoices
+      ORDER BY org_id, issued_at DESC
+    `,
+  ]);
+
+  // Outstanding excludes paid and void, so it needs its own scoped aggregate.
+  const owedRows = await adminDb.subscriptionInvoice.groupBy({
+    by: ["orgId"],
+    _sum: { total: true },
+    where: { status: { notIn: ["paid", "void"] } },
   });
 
+  const countByOrg = new Map(totals.map((t) => [t.orgId, t._count._all]));
+  const owedByOrg = new Map(owedRows.map((t) => [t.orgId, Number(t._sum.total ?? 0)]));
+  const newestByOrg = new Map(newest.map((n) => [n.org_id, n]));
+
   return orgs.map((o) => {
-    const invoices = o.subscriptionInvoices;
-    const outstanding = invoices
-      .filter((i) => i.status !== "paid" && i.status !== "void")
-      .reduce((s, i) => s + Number(i.total), 0);
+    const last = newestByOrg.get(o.id);
     return {
       orgId: o.id,
       name: o.name,
@@ -92,15 +116,15 @@ export async function listPlatformBilling() {
       priceCad: o.subscription ? Number(o.subscription.priceCad) : 0,
       subscriptionStatus: o.subscription?.status ?? null,
       trialEndsAt: o.subscription?.trialEndsAt ?? null,
-      invoiceCount: invoices.length,
-      outstanding,
-      lastInvoice: invoices[0]
+      invoiceCount: countByOrg.get(o.id) ?? 0,
+      outstanding: owedByOrg.get(o.id) ?? 0,
+      lastInvoice: last
         ? {
-            id: invoices[0].id,
-            invoiceNumber: invoices[0].invoiceNumber,
-            total: Number(invoices[0].total),
-            status: invoices[0].status,
-            issuedAt: invoices[0].issuedAt,
+            id: last.id,
+            invoiceNumber: last.invoice_number,
+            total: Number(last.total),
+            status: last.status,
+            issuedAt: last.issued_at,
           }
         : null,
     };

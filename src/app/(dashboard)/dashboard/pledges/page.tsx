@@ -4,11 +4,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ListSearch, Pagination } from "@/components/ui/list-controls";
 import { CreatePledgeForm } from "@/components/dashboard/create-pledge-form";
 import { PledgeActions } from "@/components/dashboard/pledge-actions";
 import { requireOrgUser } from "@/lib/auth/guards";
 import { assertFeature } from "@/lib/access";
 import { listPledges } from "@/lib/queries/pledges";
+import { parsePageParams } from "@/lib/pagination";
 import { formatCAD } from "@/lib/utils";
 
 export const metadata = { title: "Pledges" };
@@ -19,10 +21,15 @@ const statusVariant: Record<string, "success" | "warning" | "neutral"> = {
   cancelled: "neutral",
 };
 
-export default async function PledgesPage() {
+export default async function PledgesPage({
+  searchParams,
+}: {
+  searchParams?: { page?: string; q?: string; size?: string };
+}) {
   const session = await requireOrgUser();
   await assertFeature(session.orgId, "campaigns");
-  const { pledges, totals, campaigns } = await listPledges(session.orgId);
+  const pageParams = parsePageParams(searchParams);
+  const { pledges, totals, campaigns } = await listPledges(session.orgId, pageParams);
 
   return (
     <>
@@ -57,11 +64,16 @@ export default async function PledgesPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Pledges ({pledges.length})</CardTitle>
+            <CardTitle>Pledges ({pledges.total})</CardTitle>
+            <ListSearch action="/dashboard/pledges" q={pageParams.q} placeholder="Donor name or email…" label="Search pledges" />
           </CardHeader>
           <CardContent>
-            {pledges.length === 0 ? (
-              <EmptyState icon={<HandHeart className="size-5" />} title="No pledges yet" body="Record your first pledge above." />
+            {pledges.rows.length === 0 ? (
+              <EmptyState
+                icon={<HandHeart className="size-5" />}
+                title={pageParams.q ? "No pledges match that search" : "No pledges yet"}
+                body={pageParams.q ? "Try a different name or email address." : "Record your first pledge above."}
+              />
             ) : (
               <Table>
                 <Thead>
@@ -73,7 +85,7 @@ export default async function PledgesPage() {
                   <Th className="text-right">Manage</Th>
                 </Thead>
                 <tbody>
-                  {pledges.map((p) => (
+                  {pledges.rows.map((p) => (
                     <Tr key={p.id}>
                       <Td>
                         <p className="font-medium">{p.donorName}</p>
@@ -93,6 +105,9 @@ export default async function PledgesPage() {
                 </tbody>
               </Table>
             )}
+            <div className="pt-4">
+              <Pagination basePath="/dashboard/pledges" data={pledges} noun="pledges" />
+            </div>
           </CardContent>
         </Card>
       </main>

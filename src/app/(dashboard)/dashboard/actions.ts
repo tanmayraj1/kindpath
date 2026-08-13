@@ -12,7 +12,7 @@ import { queueReceiptEmail, flushEmails } from "@/lib/notifications";
 import { emailLayout, escapeHtml } from "@/lib/email";
 import { unusablePasswordHash, sendInvite } from "@/lib/auth/invite";
 import { revokeSessions } from "@/lib/auth/revocation";
-import { loadConsentedDonors, filterSegment } from "@/lib/segments";
+
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { audit } from "@/lib/audit";
 import { assertBillingActive } from "@/lib/access";
@@ -662,9 +662,14 @@ export async function setCampaignStatus(campaignId: string, status: "active" | "
 }
 
 // ---------------- communications campaign (CASL-gated) ----------------
-export type CampaignState = { error?: string; ok?: boolean; sent?: number; capped?: boolean };
-
-const RECIPIENT_CAP = 200; // bound a single send (queue/batch for larger lists)
+export type CampaignState = {
+  error?: string;
+  ok?: boolean;
+  /** Delivered during this request. The rest continue in the background. */
+  sent?: number;
+  /** Total consented recipients this campaign will reach. */
+  queued?: number;
+};
 
 const emailCampaignSchema = z.object({
   segment: z.enum(["all", "recurring", "high_value", "lapsed"]),
@@ -672,6 +677,18 @@ const emailCampaignSchema = z.object({
   message: z.string().min(5, "Write a message").max(10000),
 });
 
+/**
+ * Start a bulk send.
+ *
+ * This used to deliver the whole campaign inline — a serial loop of one HTTPS
+ * call plus one UPDATE per recipient — capped at 200 recipients with no cursor,
+ * so an organization with more consented donors than that could never finish a
+ * send, and there was no way to resume one that died partway.
+ *
+ * Now the campaign is recorded first, then one batch is drained inline so a small
+ * organization still sees mail land immediately. The cron drains the remainder,
+ * resuming from the keyset cursor.
+ */
 export async function sendCampaign(_prev: CampaignState, formData: FormData): Promise<CampaignState> {
   const session = await requireOrgUser();
   const { assertFeature } = await import("@/lib/access");
@@ -684,87 +701,33 @@ export async function sendCampaign(_prev: CampaignState, formData: FormData): Pr
   if (!parsed.success) return { error: parsed.error.issues[0]?.message };
   const { segment, subject, message } = parsed.data;
 
-  // resolve consented recipients for the segment
-  const { orgName, brandColor, logoUrl, recipients } = await withTenant(session.orgId, async (tx) => {
-    const org = await tx.organization.findUnique({ where: { id: session.orgId } });
-    const donors = await loadConsentedDonors(tx);
-    return {
-      orgName: org?.name ?? "your organization",
-      brandColor: org?.primaryColor ?? null,
-      logoUrl: org?.logoUrl ?? null,
-      recipients: filterSegment(donors, segment),
-    };
-  });
+  const { countSegment } = await import("@/lib/segments");
+  const recipients = await withTenant(session.orgId, (tx) => countSegment(tx, segment));
+  if (recipients === 0) {
+    return { error: "No consented donors match that audience." };
+  }
 
-  const capped = recipients.length > RECIPIENT_CAP;
-  const batch = recipients.slice(0, RECIPIENT_CAP);
-  const portalUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/portal/profile`;
-
-  // Queue every recipient FIRST, in one write, then deliver.
-  //
-  // The original shape sent up to 200 emails sequentially with nothing recorded,
-  // so a killed request re-sent to everyone on retry. Queued rows make the
-  // outcome visible per recipient.
-  //
-  // The re-read below MUST be scoped to this send. An earlier version matched
-  // `status: "queued"` across the whole org, which swept up stale rows left by
-  // any previously-killed campaign: one could be marked `sent` while carrying a
-  // different campaign's subject, and its sibling stranded `queued` forever,
-  // permanently inflating the delivery-failure count. `sendId` correlates the
-  // rows to this send and nothing else.
-  const sendId = randomUUID();
-  const queued = await withTenant(session.orgId, async (tx) => {
-    await tx.notification.createMany({
-      data: batch.map((r) => ({
+  const campaign = await withTenant(session.orgId, (tx) =>
+    tx.emailCampaign.create({
+      data: {
         orgId: session.orgId,
-        donorId: r.id,
-        channel: "email" as const,
-        category: "marketing",
-        status: "queued" as const,
-        caslChecked: true,
-        payload: { subject, segment, sendId },
-      })),
-    });
-    return tx.notification.findMany({
-      where: {
-        orgId: session.orgId,
-        category: "marketing",
-        status: "queued",
-        payload: { path: ["sendId"], equals: sendId },
+        segment,
+        subject,
+        body: message,
+        recipientEstimate: recipients,
+        createdByUserId: session.sub,
       },
-      select: { id: true, donorId: true },
-    });
-  });
-
-  const byDonor = new Map(queued.filter((q) => q.donorId).map((q) => [q.donorId as string, q.id]));
-  const messages = batch
-    .filter((r) => byDonor.has(r.id))
-    .map((r) => ({
-      notificationId: byDonor.get(r.id) as string,
-      orgId: session.orgId,
-      to: r.email,
-      subject,
-      html: emailLayout({
-        heading: escapeHtml(subject),
-        body:
-          `${escapeHtml(message).replace(/\n/g, "<br/>")}` +
-          `<hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0"/>` +
-          `<p style="font-size:12px;color:#94a3b8">You're receiving this from ${escapeHtml(orgName)} ` +
-          `because you opted in to updates. <a href="${portalUrl}">Manage your preferences</a> to unsubscribe.</p>`,
-        brand: { orgName, brandColor, logoUrl },
-      }),
-    }));
-
-  await flushEmails(messages);
-
-  const sent = await withTenant(session.orgId, (tx) =>
-    tx.notification.count({
-      where: { id: { in: messages.map((m) => m.notificationId) }, status: "sent" },
+      select: { id: true },
     })
   );
 
+  // Drain the first batch now so a typical send completes before the page
+  // re-renders; the cron picks up anything past it.
+  const { drainCampaignBatch } = await import("@/lib/campaign-queue");
+  const first = await drainCampaignBatch(campaign.id);
+
   revalidatePath("/dashboard/communications");
-  return { ok: true, sent, capped };
+  return { ok: true, sent: first.sent, queued: recipients };
 }
 
 // ---------------- annual consolidated receipts ----------------

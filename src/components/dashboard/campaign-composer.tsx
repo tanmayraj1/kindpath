@@ -24,10 +24,18 @@ export function CampaignComposer({ counts }: { counts: Record<string, number> })
         </div>
       )}
       {state.ok && (
-        <div className="flex items-center gap-2 rounded-lg border border-success/20 bg-success/5 px-3 py-2.5 text-sm text-success">
-          <CheckCircle2 className="size-4 shrink-0" />
-          Sent to {state.sent} donor{state.sent === 1 ? "" : "s"}.
-          {state.capped ? " (Capped at 200 — run again or contact us for larger sends.)" : ""}
+        <div className="flex items-start gap-2 rounded-lg border border-success/20 bg-success/5 px-3 py-2.5 text-sm text-success">
+          <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
+          <span>
+            Sent to {state.sent} donor{state.sent === 1 ? "" : "s"}.
+            {(state.queued ?? 0) > (state.sent ?? 0) && (
+              <>
+                {" "}
+                The remaining {(state.queued ?? 0) - (state.sent ?? 0)} are queued and will go out
+                shortly — you can leave this page.
+              </>
+            )}
+          </span>
         </div>
       )}
 

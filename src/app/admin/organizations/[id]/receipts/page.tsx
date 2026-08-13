@@ -2,7 +2,10 @@ import { Download } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/table";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ListSearch, Pagination } from "@/components/ui/list-controls";
 import { listReceipts } from "@/lib/queries/org";
+import { parsePageParams } from "@/lib/pagination";
 import { formatCAD } from "@/lib/utils";
 
 const typeLabel: Record<string, string> = {
@@ -11,13 +14,30 @@ const typeLabel: Record<string, string> = {
   annual: "Annual",
 };
 
-export default async function OrgReceipts({ params }: { params: { id: string } }) {
-  const receipts = await listReceipts(params.id);
+export default async function OrgReceipts({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams?: { page?: string; q?: string; size?: string };
+}) {
+  const p = parsePageParams(searchParams);
+  const receipts = await listReceipts(params.id, p);
+  const basePath = `/admin/organizations/${params.id}/receipts`;
   return (
     <Card>
-      <CardContent className="p-6">
-        {receipts.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">No receipts issued yet.</p>
+      <CardContent className="flex flex-col gap-4 p-6">
+        <ListSearch action={basePath} q={p.q} placeholder="Serial number or donor…" label="Search receipts" />
+        {receipts.rows.length === 0 ? (
+          <EmptyState
+            icon={<Download className="size-5" />}
+            title={p.q ? "No receipts match that search" : "No receipts issued yet"}
+            body={
+              p.q
+                ? "Try a different serial number or donor name."
+                : "Receipts appear here once this organization starts issuing them."
+            }
+          />
         ) : (
           <Table>
             <Thead>
@@ -29,7 +49,7 @@ export default async function OrgReceipts({ params }: { params: { id: string } }
               <Th className="text-right">PDF</Th>
             </Thead>
             <tbody>
-              {receipts.map((r) => (
+              {receipts.rows.map((r) => (
                 <Tr key={r.id}>
                   <Td className="font-mono text-xs font-medium">{r.serialNumber}</Td>
                   <Td className="font-medium">{r.donor}</Td>
@@ -57,6 +77,7 @@ export default async function OrgReceipts({ params }: { params: { id: string } }
             </tbody>
           </Table>
         )}
+        <Pagination basePath={basePath} data={receipts} noun="receipts" />
       </CardContent>
     </Card>
   );

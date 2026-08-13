@@ -4,10 +4,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ListSearch, ListFilters, Pagination } from "@/components/ui/list-controls";
 import { VoidReceiptButton } from "@/components/dashboard/void-receipt-button";
 import { AnnualReceiptsButton } from "@/components/dashboard/annual-receipts-button";
 import { requireOrgUser } from "@/lib/auth/guards";
 import { listReceipts, getOrg } from "@/lib/queries/org";
+import { parsePageParams } from "@/lib/pagination";
 import { formatCAD } from "@/lib/utils";
 
 export const metadata = { title: "Receipts" };
@@ -24,11 +26,25 @@ const statusVariant: Record<string, "success" | "neutral" | "warning"> = {
   replaced: "warning",
 };
 
-export default async function ReceiptsPage() {
+export default async function ReceiptsPage({
+  searchParams,
+}: {
+  searchParams?: { page?: string; q?: string; size?: string; year?: string; status?: string; type?: string };
+}) {
   const session = await requireOrgUser();
-  const [receipts, org] = await Promise.all([listReceipts(session.orgId), getOrg(session.orgId)]);
+  const p = parsePageParams(searchParams);
+  const filters = {
+    year: searchParams?.year ?? "",
+    status: searchParams?.status ?? "",
+    type: searchParams?.type ?? "",
+  };
+  const [receipts, org] = await Promise.all([
+    listReceipts(session.orgId, p, filters),
+    getOrg(session.orgId),
+  ]);
   const thisYear = new Date().getFullYear();
   const years = [thisYear, thisYear - 1, thisYear - 2];
+  const anyFilter = Boolean(filters.year || filters.status || filters.type || p.q);
 
   return (
     <>
@@ -49,16 +65,62 @@ export default async function ReceiptsPage() {
             </CardContent>
           </Card>
         )}
-        <p className="text-sm text-muted-foreground">
-          {receipts.length} {receipts.length === 1 ? "document" : "documents"} issued
-        </p>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <ListSearch
+            action="/dashboard/receipts"
+            q={p.q}
+            placeholder="Serial number or donor…"
+            label="Search receipts"
+          />
+          <ListFilters
+            action="/dashboard/receipts"
+            hidden={{ q: p.q }}
+            filters={[
+              {
+                name: "year",
+                label: "Year",
+                value: filters.year,
+                options: [
+                  { value: "", label: "All years" },
+                  ...years.map((y) => ({ value: String(y), label: String(y) })),
+                ],
+              },
+              {
+                name: "status",
+                label: "Status",
+                value: filters.status,
+                options: [
+                  { value: "", label: "Any status" },
+                  { value: "issued", label: "Issued" },
+                  { value: "voided", label: "Voided" },
+                  { value: "replaced", label: "Replaced" },
+                ],
+              },
+              {
+                name: "type",
+                label: "Type",
+                value: filters.type,
+                options: [
+                  { value: "", label: "Any type" },
+                  { value: "official", label: "Official receipt" },
+                  { value: "confirmation", label: "Confirmation" },
+                  { value: "annual", label: "Annual receipt" },
+                ],
+              },
+            ]}
+          />
+        </div>
         <Card>
           <CardContent className="p-6">
-            {receipts.length === 0 ? (
+            {receipts.rows.length === 0 ? (
               <EmptyState
                 icon={<FileCheck2 className="size-5" />}
-                title="No receipts yet"
-                body="Receipts are generated automatically when donors give and complete their details."
+                title={anyFilter ? "No receipts match those filters" : "No receipts yet"}
+                body={
+                  anyFilter
+                    ? "Try widening the year, status or type, or clearing the search."
+                    : "Receipts are generated automatically when donors give and complete their details."
+                }
               />
             ) : (
               <Table>
@@ -72,7 +134,7 @@ export default async function ReceiptsPage() {
                   <Th className="text-right">Actions</Th>
                 </Thead>
                 <tbody>
-                  {receipts.map((r) => (
+                  {receipts.rows.map((r) => (
                     <Tr key={r.id}>
                       <Td className="font-mono text-xs font-medium">{r.serialNumber}</Td>
                       <Td className="font-medium">{r.donor}</Td>
@@ -106,6 +168,14 @@ export default async function ReceiptsPage() {
                 </tbody>
               </Table>
             )}
+            <div className="pt-4">
+              <Pagination
+                basePath="/dashboard/receipts"
+                data={receipts}
+                noun="receipts"
+                extra={filters}
+              />
+            </div>
           </CardContent>
         </Card>
       </main>

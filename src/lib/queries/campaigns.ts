@@ -51,11 +51,13 @@ export function getCampaign(orgId: string, id: string) {
         take: 10,
         include: { donor: true },
       }),
-      tx.donation.findMany({
-        where: { campaignId: id, status: "succeeded" },
-        distinct: ["donorId"],
-        select: { donorId: true },
-      }),
+      // One integer, counted in Postgres. `findMany({ distinct })` materialized a
+      // row per contributing donor purely to read its length.
+      tx.$queryRaw<{ n: bigint }[]>`
+        SELECT COUNT(DISTINCT donor_id) AS n
+        FROM donations
+        WHERE campaign_id = ${id} AND status = 'succeeded'
+      `,
     ]);
     return {
       id: c.id,
@@ -68,7 +70,7 @@ export function getCampaign(orgId: string, id: string) {
       status: c.status,
       deadline: c.deadline,
       accent: c.accent,
-      donorCount: donorCount.length,
+      donorCount: Number(donorCount[0]?.n ?? 0),
       recent: donations.map((d) => ({
         donor: `${d.donor.firstName} ${d.donor.lastName}`,
         amount: Number(d.amount),

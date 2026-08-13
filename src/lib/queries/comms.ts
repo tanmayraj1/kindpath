@@ -1,14 +1,11 @@
 import type { NotificationStatus } from "@prisma/client";
 import { withTenant } from "@/lib/tenant";
-import { loadConsentedDonors, filterSegment, SEGMENTS, type SegmentKey } from "@/lib/segments";
+import { countSegments } from "@/lib/segments";
 
 /** Recipient counts per segment (CASL-consented only) + recent campaign sends. */
 export async function getCommsData(orgId: string) {
   return withTenant(orgId, async (tx) => {
-    const donors = await loadConsentedDonors(tx);
-    const counts = Object.fromEntries(
-      SEGMENTS.map((s) => [s.key, filterSegment(donors, s.key).length])
-    ) as Record<SegmentKey, number>;
+    const { counts, totalConsented } = await countSegments(tx);
 
     const recent = await tx.notification.findMany({
       where: { category: "marketing" },
@@ -17,7 +14,7 @@ export async function getCommsData(orgId: string) {
       select: { sentAt: true, createdAt: true, payload: true, status: true },
     });
 
-    return { counts, totalConsented: donors.length, recent };
+    return { counts, totalConsented, recent };
   });
 }
 

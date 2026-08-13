@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { withTenant } from "@/lib/tenant";
 import { paged, type PageParams, type Paged } from "@/lib/pagination";
 
@@ -211,22 +212,67 @@ export function getOrgDonorDetail(orgId: string, donorId: string) {
   });
 }
 
-/** Issued/voided receipts with donor name. */
-export function listReceipts(orgId: string) {
+export type ReceiptFilters = { year?: string; status?: string; type?: string };
+
+/**
+ * Issued/voided receipts, paginated, searchable and filterable.
+ *
+ * The donor name comes from the receipt's own snapshot rather than a join to the
+ * live donor row: a receipt must keep showing the name it was issued to, which is
+ * what allows a donor to be erased while the charity retains valid CRA records.
+ */
+export function listReceipts(orgId: string, page?: PageParams, filters: ReceiptFilters = {}) {
   return withTenant(orgId, async (tx) => {
-    const receipts = await tx.receipt.findMany({
-      orderBy: { dateIssued: "desc" },
-      include: { donor: true },
-    });
-    return receipts.map((r) => ({
+    const q = page?.q ?? "";
+    const where: Prisma.ReceiptWhereInput = {
+      ...(filters.year ? { year: Number(filters.year) } : {}),
+      ...(filters.status ? { status: filters.status as Prisma.ReceiptWhereInput["status"] } : {}),
+      ...(filters.type
+        ? { documentType: filters.type as Prisma.ReceiptWhereInput["documentType"] }
+        : {}),
+      ...(q
+        ? {
+            OR: [
+              { serialNumber: { contains: q, mode: "insensitive" as const } },
+              { donorNameSnapshot: { contains: q, mode: "insensitive" as const } },
+            ],
+          }
+        : {}),
+    };
+
+    const [total, receipts] = await Promise.all([
+      tx.receipt.count({ where }),
+      tx.receipt.findMany({
+        where,
+        orderBy: { dateIssued: "desc" },
+        ...(page ? { skip: page.skip, take: page.size } : {}),
+        select: {
+          id: true,
+          serialNumber: true,
+          donorNameSnapshot: true,
+          documentType: true,
+          amount: true,
+          eligibleAmount: true,
+          status: true,
+          dateIssued: true,
+          year: true,
+        },
+      }),
+    ]);
+
+    const rows = receipts.map((r) => ({
       id: r.id,
       serialNumber: r.serialNumber,
-      donor: `${r.donor.firstName} ${r.donor.lastName}`,
+      donor: r.donorNameSnapshot,
       type: r.documentType,
       amount: Number(r.amount),
       eligibleAmount: Number(r.eligibleAmount),
       status: r.status,
       dateIssued: r.dateIssued,
+      year: r.year,
     }));
+    return page
+      ? paged(rows, total, page)
+      : paged(rows, total, { page: 1, size: rows.length || 1, q: "", skip: 0 });
   });
 }

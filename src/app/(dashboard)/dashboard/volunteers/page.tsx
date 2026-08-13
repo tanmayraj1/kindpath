@@ -4,6 +4,7 @@ import { Topbar } from "@/components/dashboard/topbar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ListSearch, Pagination } from "@/components/ui/list-controls";
 import { AddVolunteerForm } from "@/components/dashboard/add-volunteer-form";
 import {
   VolunteerRowActions,
@@ -13,6 +14,7 @@ import {
 import { requireOrgUser } from "@/lib/auth/guards";
 import { assertFeature } from "@/lib/access";
 import { listVolunteers } from "@/lib/queries/volunteers";
+import { parsePageParams } from "@/lib/pagination";
 import { signedPassPath } from "@/lib/pass-links";
 
 export const metadata = { title: "Volunteers" };
@@ -23,12 +25,15 @@ function passState(p: { status: string; validUntil: Date | null }) {
   return { label: "Active", variant: "success" as const };
 }
 
-export default async function VolunteersPage() {
+export default async function VolunteersPage({
+  searchParams,
+}: {
+  searchParams?: { page?: string; q?: string; size?: string };
+}) {
   const session = await requireOrgUser();
   await assertFeature(session.orgId, "volunteers");
-  const volunteers = await listVolunteers(session.orgId);
-  const activeCount = volunteers.filter((v) => v.status === "active").length;
-  const passCount = volunteers.flatMap((v) => v.passes).filter((p) => p.status === "active").length;
+  const pageParams = parsePageParams(searchParams);
+  const { roster, activeCount, passCount } = await listVolunteers(session.orgId, pageParams);
 
   return (
     <>
@@ -64,17 +69,22 @@ export default async function VolunteersPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Roster ({volunteers.length})</CardTitle>
+            <CardTitle>Roster ({roster.total})</CardTitle>
+            <ListSearch action="/dashboard/volunteers" q={pageParams.q} placeholder="Name or email…" label="Search volunteers" />
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            {volunteers.length === 0 ? (
+            {roster.rows.length === 0 ? (
               <EmptyState
                 icon={<HeartHandshake className="size-5" />}
-                title="No volunteers yet"
-                body="Add your first volunteer above — then issue them a pass."
+                title={pageParams.q ? "No volunteers match that search" : "No volunteers yet"}
+                body={
+                  pageParams.q
+                    ? "Try a different name or email address."
+                    : "Add your first volunteer above — then issue them a pass."
+                }
               />
             ) : (
-              volunteers.map((v) => (
+              roster.rows.map((v) => (
                 <div key={v.id} className="rounded-xl border border-border p-4">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
@@ -136,6 +146,7 @@ export default async function VolunteersPage() {
                 </div>
               ))
             )}
+            <Pagination basePath="/dashboard/volunteers" data={roster} noun="volunteers" />
           </CardContent>
         </Card>
       </main>

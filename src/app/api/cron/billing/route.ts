@@ -1,20 +1,11 @@
-import crypto from "node:crypto";
 import { runBilling } from "@/lib/billing";
 import { runSubscriptionCycle } from "@/lib/subscriptions";
 import { captureError, log } from "@/lib/observability";
-import { startJobRun, finishJobRun, logUnauthorizedCron } from "@/lib/job-runs";
-import { clientIp } from "@/lib/rate-limit";
+import { startJobRun, finishJobRun } from "@/lib/job-runs";
+import { requireCronAuth } from "@/lib/cron-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-/** Constant-time secret comparison to avoid timing attacks. */
-function safeEqual(a: string, b: string) {
-  const ab = Buffer.from(a);
-  const bb = Buffer.from(b);
-  if (ab.length !== bb.length) return false;
-  return crypto.timingSafeEqual(ab, bb);
-}
 
 /**
  * Trigger a recurring-billing run. Protect with CRON_SECRET via either:
@@ -22,20 +13,8 @@ function safeEqual(a: string, b: string) {
  * Point a scheduler (Vercel Cron, GitHub Actions, etc.) at this daily.
  */
 async function handle(req: Request) {
-  const secret = process.env.CRON_SECRET;
-  const url = new URL(req.url);
-  const provided =
-    req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
-    url.searchParams.get("secret") ??
-    "";
-
-  if (!secret || !provided || !safeEqual(provided, secret)) {
-    // Log it. A rotated CRON_SECRET otherwise fails in total silence: this
-    // returns before anything is recorded, so the job just looks like it never
-    // ran while every recurring gift quietly stops being collected.
-    logUnauthorizedCron("billing", clientIp());
-    return Response.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const denied = requireCronAuth(req, "billing");
+  if (denied) return denied;
 
   const runId = await startJobRun("billing");
 

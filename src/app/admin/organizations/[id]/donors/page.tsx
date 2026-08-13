@@ -1,7 +1,8 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/table";
-import { Pagination } from "@/components/ui/list-controls";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ListSearch, Pagination } from "@/components/ui/list-controls";
 import { parsePageParams } from "@/lib/pagination";
 import { listDonors } from "@/lib/queries/org";
 import { formatCAD } from "@/lib/utils";
@@ -13,12 +14,24 @@ export default async function OrgDonors({
   params: { id: string };
   searchParams: { page?: string; q?: string; size?: string };
 }) {
-  const donors = await listDonors(params.id, parsePageParams(searchParams));
+  // `q` was parsed and passed to the query, but no search box was ever rendered —
+  // support could search this list only by hand-editing the URL.
+  const pageParams = parsePageParams(searchParams);
+  const donors = await listDonors(params.id, pageParams);
+  const basePath = `/admin/organizations/${params.id}/donors`;
   return (
     <Card>
-      <CardContent className="p-6">
-        {donors.total === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">No donors yet.</p>
+      <CardContent className="flex flex-col gap-4 p-6">
+        <ListSearch action={basePath} q={pageParams.q} placeholder="Name or email…" label="Search donors" />
+        {donors.rows.length === 0 ? (
+          <EmptyState
+            title={pageParams.q ? "No donors match that search" : "No donors yet"}
+            body={
+              pageParams.q
+                ? "Try a different name or email address."
+                : "Donors appear here once this organization starts receiving gifts."
+            }
+          />
         ) : (
           <Table>
             <Thead>

@@ -1,7 +1,10 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/table";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ListSearch, Pagination } from "@/components/ui/list-controls";
 import { listRecurringPlans } from "@/lib/queries/org";
+import { parsePageParams } from "@/lib/pagination";
 import { formatCAD } from "@/lib/utils";
 
 const statusVariant: Record<string, "success" | "warning" | "neutral" | "destructive"> = {
@@ -11,13 +14,31 @@ const statusVariant: Record<string, "success" | "warning" | "neutral" | "destruc
   suspended: "destructive",
 };
 
-export default async function OrgRecurring({ params }: { params: { id: string } }) {
-  const plans = await listRecurringPlans(params.id);
+export default async function OrgRecurring({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams?: { page?: string; q?: string; size?: string };
+}) {
+  // This passed no page argument at all, so support opening a large org's
+  // recurring tab meant loading every plan it has ever had, with joins.
+  const pageParams = parsePageParams(searchParams);
+  const plans = await listRecurringPlans(params.id, pageParams);
+  const basePath = `/admin/organizations/${params.id}/recurring`;
   return (
     <Card>
-      <CardContent className="p-6">
-        {plans.total === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">No recurring plans.</p>
+      <CardContent className="flex flex-col gap-4 p-6">
+        <ListSearch action={basePath} q={pageParams.q} placeholder="Donor name or email…" label="Search plans" />
+        {plans.rows.length === 0 ? (
+          <EmptyState
+            title={pageParams.q ? "No plans match that search" : "No recurring plans"}
+            body={
+              pageParams.q
+                ? "Try a different donor name or email address."
+                : "Recurring gifts for this organization will appear here."
+            }
+          />
         ) : (
           <Table>
             <Thead>
@@ -50,6 +71,7 @@ export default async function OrgRecurring({ params }: { params: { id: string } 
             </tbody>
           </Table>
         )}
+        <Pagination basePath={basePath} data={plans} noun="plans" />
       </CardContent>
     </Card>
   );

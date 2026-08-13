@@ -50,15 +50,25 @@ export function paged<T>(rows: T[], total: number, p: PageParams): Paged<T> {
   };
 }
 
-/** Build a URL preserving existing query params while changing some of them. */
+/**
+ * Build a URL preserving existing query params while changing some of them.
+ *
+ * `extra` carries page-specific filters (receipt year, status, type …) across
+ * paging. Without it, choosing a filter and then clicking "Next" silently drops
+ * the filter and pages through the unfiltered list instead.
+ */
 export function pageHref(
   basePath: string,
   current: { q?: string; size?: number },
-  next: { page?: number; q?: string }
+  next: { page?: number; q?: string },
+  extra?: Record<string, string | undefined>
 ): string {
   const params = new URLSearchParams();
   const q = next.q !== undefined ? next.q : current.q;
   if (q) params.set("q", q);
+  for (const [k, v] of Object.entries(extra ?? {})) {
+    if (v) params.set(k, v);
+  }
   if (next.page && next.page > 1) params.set("page", String(next.page));
   if (current.size && current.size !== DEFAULT_PAGE_SIZE) params.set("size", String(current.size));
   const qs = params.toString();
