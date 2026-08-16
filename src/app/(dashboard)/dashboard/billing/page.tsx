@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { FormAlert } from "@/components/ui/form-alert";
 import { requireOrgUser } from "@/lib/auth/guards";
 import { getOrgBilling } from "@/lib/queries/billing";
+import { getPaymentInstructions } from "@/lib/subscription-payments";
 import { formatCAD } from "@/lib/utils";
 
 export const metadata = { title: "Billing" };
@@ -25,6 +26,7 @@ function date(d: Date) {
 export default async function BillingPage() {
   const session = await requireOrgUser();
   const billing = await getOrgBilling(session.orgId);
+  const payment = getPaymentInstructions(billing?.outstandingTotal ?? 0);
 
   return (
     <>
@@ -86,6 +88,29 @@ export default async function BillingPage() {
                 </CardContent>
               </Card>
             </div>
+
+            {/* "Payment due" used to be a number with no next step. Billing is
+                still arranged manually, so say how to pay rather than render a
+                button that doesn't do anything. */}
+            {billing.outstandingTotal > 0 && (
+              <Card className="border-warning/40">
+                <CardHeader>
+                  <CardTitle>{payment.heading}</CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-3 text-sm text-muted-foreground">
+                  <p>{payment.body}</p>
+                  <p>
+                    Questions about an invoice?{" "}
+                    <a
+                      href={`mailto:${payment.contactEmail}`}
+                      className="font-medium text-brand-600 hover:underline"
+                    >
+                      {payment.contactEmail}
+                    </a>
+                  </p>
+                </CardContent>
+              </Card>
+            )}
 
             <Card>
               <CardHeader>

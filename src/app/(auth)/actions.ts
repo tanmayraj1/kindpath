@@ -322,6 +322,24 @@ export async function signupAction(
   });
 
   const user = created.users[0];
+
+  // Prove the mailbox. Deliberately does NOT gate anything yet — receipts,
+  // billing notices and password resets all depend on this address being real,
+  // so it is worth recording from day one, but refusing access to accounts
+  // created before verification existed would lock out real customers.
+  // Failure is swallowed inside sendEmailVerification: losing a confirmation
+  // email is recoverable, losing the signup is not.
+  const { sendEmailVerification } = await import("@/lib/auth/email-verification");
+  await sendEmailVerification({
+    userId: user.id,
+    orgId: created.id,
+    email: user.email,
+    name: user.name,
+    orgName: created.name,
+    brandColor: created.primaryColor,
+    logoUrl: created.logoUrl,
+  });
+
   await createSession({
     sub: user.id,
     kind: "org",

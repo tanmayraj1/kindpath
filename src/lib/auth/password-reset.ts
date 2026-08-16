@@ -23,7 +23,10 @@ export const RESET_TTL_MS = 60 * 60 * 1000; // 1 hour
 export const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days — new staff need slack
 
 export type Principal = SessionClaims["kind"];
-export type Purpose = "reset" | "invite";
+export type Purpose = "reset" | "invite" | "verify";
+
+/** Email-verification links live as long as an invite — people sign up and read mail later. */
+export const VERIFY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 function hashToken(raw: string): string {
   return createHash("sha256").update(raw).digest("hex");
@@ -46,11 +49,15 @@ export async function issueResetToken(args: {
 }): Promise<IssuedToken> {
   const purpose = args.purpose ?? "reset";
   const raw = randomBytes(TOKEN_BYTES).toString("base64url");
-  const expiresAt = new Date(Date.now() + (purpose === "invite" ? INVITE_TTL_MS : RESET_TTL_MS));
+  const ttl =
+    purpose === "invite" ? INVITE_TTL_MS : purpose === "verify" ? VERIFY_TTL_MS : RESET_TTL_MS;
+  const expiresAt = new Date(Date.now() + ttl);
 
-  // Supersede any outstanding tokens for this principal.
+  // Supersede outstanding tokens for this principal AND PURPOSE. Scoping to the
+  // purpose matters: a password reset must not silently cancel a pending email
+  // verification (or the reverse), which is what an unscoped sweep would do.
   await adminDb.passwordResetToken.updateMany({
-    where: { principal: args.principal, principalId: args.principalId, usedAt: null },
+    where: { principal: args.principal, principalId: args.principalId, purpose, usedAt: null },
     data: { usedAt: new Date() },
   });
 

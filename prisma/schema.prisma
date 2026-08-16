@@ -331,6 +331,11 @@ model OrgUser {
   role               OrgUserRole @default(org_admin)
   status             String      @default("active")
   lastLoginAt        DateTime?   @map("last_login_at")
+  /// When this person proved they control the mailbox they signed up with.
+  /// Recorded from signup onward; nothing is gated on it yet, so turning
+  /// verification into a requirement later is a policy change rather than a
+  /// migration against accounts that never had the chance to verify.
+  emailVerifiedAt    DateTime?   @map("email_verified_at")
   totpSecret         String?     @map("totp_secret")
   totpEnabledAt      DateTime?   @map("totp_enabled_at")
   totpRecoveryCodes  String[]    @default([]) @map("totp_recovery_codes")
