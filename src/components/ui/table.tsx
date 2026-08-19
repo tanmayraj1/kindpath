@@ -24,9 +24,20 @@ export function Th({ className, ...props }: React.ThHTMLAttributes<HTMLTableCell
 }
 
 export function Tr({ className, ...props }: React.HTMLAttributes<HTMLTableRowElement>) {
-  return <tr className={cn("border-b border-border/60 last:border-0", className)} {...props} />;
+  return (
+    <tr
+      className={cn(
+        // The hover tint is a scanning aid on wide tables, not decoration: it
+        // keeps the eye on one row across eight columns.
+        "border-b border-border/60 transition-colors last:border-0 hover:bg-secondary/50",
+        className
+      )}
+      {...props}
+    />
+  );
 }
 
 export function Td({ className, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) {
-  return <td className={cn("py-3.5", className)} {...props} />;
+  // tabular-nums so amount and date columns don't wobble between rows.
+  return <td className={cn("tnum py-3.5", className)} {...props} />;
 }

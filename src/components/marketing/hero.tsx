@@ -23,7 +23,7 @@ export function Hero() {
         <div className="flex flex-col items-start gap-6 animate-fade-in-up">
           <Badge variant="brand" className="px-3 py-1">
             <ShieldCheck className="size-3.5" />
-            CRA-compliant · PCI-DSS · Made in Canada
+            CRA-compliant receipts · Made in Canada
           </Badge>
           <h1 className="font-display text-4xl font-extrabold leading-[1.05] tracking-tight sm:text-5xl lg:text-6xl">
             Modern giving for{" "}

@@ -37,8 +37,26 @@ export default async function DashboardPage() {
     countDeliveryFailures(session.orgId),
   ]);
 
-  const stats = [
-    { label: "Raised this month", value: formatCAD(data.stats.raisedThisMonth), icon: TrendingUp },
+  // Delta vs the SAME point last month — full-last-month vs partial-this-month
+  // would show every org "down" for most of every month. Only shown when last
+  // month had activity, so a brand-new org isn't told it's "up ∞%".
+  const prev = data.stats.raisedLastMonthSamePoint;
+  const deltaPct = prev > 0 ? Math.round(((data.stats.raisedThisMonth - prev) / prev) * 100) : null;
+
+  const stats: {
+    label: string;
+    value: string;
+    icon: typeof TrendingUp;
+    delta?: { pct: number; label: string };
+  }[] = [
+    {
+      label: "Raised this month",
+      value: formatCAD(data.stats.raisedThisMonth),
+      icon: TrendingUp,
+      ...(deltaPct !== null
+        ? { delta: { pct: deltaPct, label: "vs this time last month" } }
+        : {}),
+    },
     { label: "Active recurring donors", value: String(data.stats.activeRecurring), icon: Repeat },
     { label: "Total donors", value: String(data.stats.totalDonors), icon: Users },
     { label: "Receipts issued", value: String(data.stats.receiptsIssued), icon: FileCheck2 },
@@ -108,13 +126,32 @@ export default async function DashboardPage() {
           {stats.map((stat) => (
             <Card key={stat.label}>
               <CardContent className="flex flex-col gap-3 p-5">
-                <span className="grid size-9 place-items-center rounded-lg bg-brand-50 text-brand-600">
-                  <stat.icon className="size-[18px]" />
-                </span>
-                <div>
-                  <p className="font-display text-2xl font-bold">{stat.value}</p>
-                  <p className="text-sm text-muted-foreground">{stat.label}</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-muted-foreground">{stat.label}</p>
+                  <span className="grid size-8 place-items-center rounded-lg bg-brand-50 text-brand-600">
+                    <stat.icon className="size-4" aria-hidden />
+                  </span>
                 </div>
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <p className="tnum font-display text-2xl font-bold tracking-tight">{stat.value}</p>
+                  {stat.delta && (
+                    <span
+                      className={cn(
+                        "tnum rounded-full px-1.5 py-0.5 text-xs font-semibold",
+                        stat.delta.pct >= 0
+                          ? "bg-success/10 text-success"
+                          : "bg-destructive/10 text-destructive"
+                      )}
+                      title={stat.delta.label}
+                    >
+                      {stat.delta.pct >= 0 ? "+" : ""}
+                      {stat.delta.pct}%
+                    </span>
+                  )}
+                </div>
+                {stat.delta && (
+                  <p className="-mt-2 text-xs text-muted-foreground">{stat.delta.label}</p>
+                )}
               </CardContent>
             </Card>
           ))}

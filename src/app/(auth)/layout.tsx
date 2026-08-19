@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { ShieldCheck, FileCheck2, Repeat } from "lucide-react";
+import { ShieldCheck, FileCheck2, Repeat, Landmark } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 
 const highlights = [
   { icon: FileCheck2, text: "CRA-compliant tax receipts, issued automatically" },
-  { icon: Repeat, text: "Recurring giving with smart retry logic" },
-  { icon: ShieldCheck, text: "PCI-DSS secure · Canadian data residency" },
+  { icon: Repeat, text: "Recurring giving with automatic retries" },
+  { icon: ShieldCheck, text: "Card details never touch KindPath — payments run on your gateway's secure page" },
+  { icon: Landmark, text: "Donations settle directly to your own merchant account" },
 ];
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
@@ -28,10 +29,16 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           className="absolute inset-0 bg-grid-faint opacity-10 [background-size:32px_32px]"
         />
         <div className="relative flex h-full flex-col justify-center px-14 text-white">
-          <blockquote className="font-display text-3xl font-semibold leading-snug">
-            “KindPath gave our parish back hours every week. Receipts just… happen now.”
-          </blockquote>
-          <p className="mt-4 text-white/80">— Finance Council, St. Mary&apos;s Parish</p>
+          {/* A statement we can stand behind — the previous testimonial here was
+              invented and attributed to the demo-data organization, the same
+              class of fabricated claim removed from the marketing page. */}
+          <p className="font-display text-3xl font-semibold leading-snug">
+            Every gift receipted.
+            <br />
+            Every record yours.
+            <br />
+            <span className="text-white/70">Built for Canadian charities.</span>
+          </p>
 
           <ul className="mt-12 flex flex-col gap-4">
             {highlights.map((h) => (

@@ -101,6 +101,30 @@
   * {
     @apply border-border;
   }
+  /* Text selection carries the brand — a small cue that the details are cared for. */
+  ::selection {
+    background: hsl(var(--brand-200));
+    color: hsl(var(--brand-950));
+  }
+  /* Slim, quiet scrollbars inside panels (tables, drawers) on WebKit. */
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
   html {
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
@@ -114,9 +138,25 @@
   :where(a, button, input, textarea, select, [tabindex]):focus-visible {
     @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
   }
+  /* Vestibular safety: every decorative animation collapses to a fade for
+     people who asked their OS for less motion. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 }
 
 @layer utilities {
+  /* Money and counts in tables must not wobble as digits change width. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
   .text-gradient {
     @apply bg-clip-text text-transparent bg-gradient-to-r from-brand-600 to-accent;
   }

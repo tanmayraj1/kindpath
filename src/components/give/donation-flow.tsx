@@ -88,18 +88,47 @@ export function DonationFlow({
 
   return (
     <div className="mx-auto w-full max-w-md">
-      {/* progress */}
-      <div className="mb-6 flex items-center justify-center gap-2">
-        {[1, 2, 3].map((n) => (
-          <span
-            key={n}
-            className={cn(
-              "h-1.5 w-10 rounded-full transition-colors",
-              step >= n ? "bg-primary" : "bg-border"
-            )}
-          />
-        ))}
-      </div>
+      {/* progress — labeled, so "how much longer is this?" has an answer before
+          someone types a card number. Announced to assistive tech as a list. */}
+      <ol
+        aria-label={`Step ${step} of 3`}
+        className="mb-6 flex items-center justify-center gap-1 text-[11px] font-medium"
+      >
+        {(["Amount", "Payment", "Receipt"] as const).map((label, i) => {
+          const n = (i + 1) as 1 | 2 | 3;
+          return (
+            <li key={label} className="flex items-center gap-1">
+              {i > 0 && <span aria-hidden className="mx-1 h-px w-6 bg-border" />}
+              <span
+                aria-current={step === n ? "step" : undefined}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-full px-2.5 py-1 transition-colors",
+                  step === n
+                    ? "bg-brand-50 text-brand-700"
+                    : step > n
+                      ? "text-brand-600"
+                      : "text-muted-foreground"
+                )}
+              >
+                <span
+                  aria-hidden
+                  className={cn(
+                    "grid size-4 place-items-center rounded-full text-[9px] font-bold",
+                    step > n
+                      ? "bg-brand-600 text-white"
+                      : step === n
+                        ? "border-[1.5px] border-brand-600 text-brand-700"
+                        : "border-[1.5px] border-border"
+                  )}
+                >
+                  {step > n ? "✓" : n}
+                </span>
+                {label}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
 
       <div className="rounded-2xl border border-border bg-card p-6 shadow-lg sm:p-8">
         {/* STEP 1 — amount */}
@@ -119,11 +148,12 @@ export function DonationFlow({
                     key={f}
                     type="button"
                     onClick={() => setFrequency(f)}
+                    aria-pressed={frequency === f}
                     className={cn(
-                      "rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors",
+                      "rounded-lg border px-3 py-2.5 text-sm font-medium transition-all",
                       frequency === f
-                        ? "border-brand-400 bg-brand-50 text-brand-700"
-                        : "border-border hover:bg-secondary"
+                        ? "border-brand-500 bg-brand-50 text-brand-700 shadow-xs ring-1 ring-brand-500/40"
+                        : "border-border text-muted-foreground hover:bg-secondary hover:text-foreground"
                     )}
                   >
                     {f === "one_time" ? "One-time" : "Monthly"}
@@ -143,11 +173,14 @@ export function DonationFlow({
                       setAmount(p);
                       setCustom("");
                     }}
+                    aria-pressed={!custom && amount === p}
                     className={cn(
-                      "rounded-lg border px-2 py-2.5 text-sm font-semibold transition-colors",
+                      // h-12: these are the primary controls on a page mostly used
+                      // on phones — thumb-sized, not mouse-sized.
+                      "tnum h-12 rounded-lg border text-base font-semibold transition-all",
                       !custom && amount === p
-                        ? "border-brand-400 bg-brand-50 text-brand-700"
-                        : "border-border hover:bg-secondary"
+                        ? "border-brand-500 bg-brand-50 text-brand-700 shadow-xs ring-1 ring-brand-500/40"
+                        : "border-border text-foreground hover:border-brand-300 hover:bg-secondary"
                     )}
                   >
                     ${p}
@@ -345,9 +378,23 @@ export function DonationFlow({
         )}
       </div>
 
-      <p className="mt-4 text-center text-xs text-muted-foreground">
-        Powered by KindPath · Secure donations for faith communities
-      </p>
+      {/* Trust strip. Every line is verifiable in this repo: card entry happens
+          on the gateway's own page, funds settle to the org's merchant account,
+          and the receipt promise follows charityStatus rather than being claimed
+          unconditionally. */}
+      <div className="mt-5 flex flex-col items-center gap-2 text-xs text-muted-foreground">
+        <p className="flex items-center gap-1.5">
+          <Lock className="size-3.5" aria-hidden />
+          Card details are entered on your payment provider&apos;s secure page — they never reach
+          KindPath.
+        </p>
+        <p>
+          {org.charityStatus === "registered"
+            ? "Registered Canadian charity — you'll receive an official donation receipt."
+            : "You'll receive a payment confirmation for your records."}
+        </p>
+        <p className="text-muted-foreground/70">Powered by KindPath</p>
+      </div>
     </div>
   );
 }

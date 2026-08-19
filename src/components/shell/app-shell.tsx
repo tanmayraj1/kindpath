@@ -47,13 +47,27 @@ function NavLinks({
             tabIndex={hidden ? -1 : undefined}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+              "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
               active
                 ? "bg-brand-50 text-brand-700"
                 : "text-muted-foreground hover:bg-secondary hover:text-foreground"
             )}
           >
-            <item.icon className="size-[18px] shrink-0" />
+            {/* Active indicator: a short bar, not just a tint — survives squinting
+                and low-contrast displays. */}
+            <span
+              aria-hidden
+              className={cn(
+                "absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-brand-600 transition-all",
+                active ? "opacity-100" : "opacity-0 group-hover:opacity-30"
+              )}
+            />
+            <item.icon
+              className={cn(
+                "size-[18px] shrink-0 transition-colors",
+                active ? "text-brand-600" : "text-muted-foreground/70 group-hover:text-foreground"
+              )}
+            />
             {item.label}
           </Link>
         );

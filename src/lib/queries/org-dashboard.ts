@@ -91,8 +91,17 @@ export async function getReportData(orgId: string) {
 export async function getOrgDashboard(orgId: string) {
   return withTenant(orgId, async (tx) => {
     const monthStart = startOfMonth();
+    // The honest comparison is same-period: the first N days of last month
+    // against the first N days of this one. Comparing a full last month against
+    // a partial current month would show every org "down" for three weeks out
+    // of four.
+    const now = new Date();
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthSamePoint = new Date(
+      lastMonthStart.getTime() + (now.getTime() - monthStart.getTime())
+    );
 
-    const [org, totalDonors, activeRecurring, receiptsIssued, raisedAgg, recent, funds] =
+    const [org, totalDonors, activeRecurring, receiptsIssued, raisedAgg, lastMonthAgg, recent, funds] =
       await Promise.all([
         tx.organization.findUnique({ where: { id: orgId } }),
         tx.donor.count(),
@@ -101,6 +110,13 @@ export async function getOrgDashboard(orgId: string) {
         tx.donation.aggregate({
           _sum: { amount: true },
           where: { status: "succeeded", receivedAt: { gte: monthStart } },
+        }),
+        tx.donation.aggregate({
+          _sum: { amount: true },
+          where: {
+            status: "succeeded",
+            receivedAt: { gte: lastMonthStart, lt: lastMonthSamePoint },
+          },
         }),
         tx.donation.findMany({
           where: {},
@@ -128,6 +144,7 @@ export async function getOrgDashboard(orgId: string) {
       },
       stats: {
         raisedThisMonth: Number(raisedAgg._sum.amount ?? 0),
+        raisedLastMonthSamePoint: Number(lastMonthAgg._sum.amount ?? 0),
         activeRecurring,
         totalDonors,
         receiptsIssued,
