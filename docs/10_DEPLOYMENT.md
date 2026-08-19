@@ -53,6 +53,12 @@ ADMIN_EMAIL="you@yourdomain.com" ADMIN_NAME="You" ADMIN_PASSWORD="<strong-passwo
 ```
 Do **not** run `npm run db:seed` in production (that's demo data).
 
+> ⚠️ **Subscribe the Stripe webhook endpoint to exactly four events:**
+> `payment_intent.succeeded`, `payment_intent.payment_failed`, `charge.refunded`,
+> `refund.created` — pointed at `https://yourdomain.com/api/webhooks/pos`.
+> Anything else is acknowledged and ignored (see `UnsupportedWebhookEvent`), so
+> "send me everything" is safe but noisy.
+
 ## 4. Set up email (Resend)
 1. Create a Resend account, **verify your sending domain** (DNS records).
 2. Create an API key → `RESEND_API_KEY`.
@@ -82,6 +88,21 @@ Do **not** run `npm run db:seed` in production (that's demo data).
 | `BILLING_CONTACT_EMAIL` | where customers ask about an invoice |
 
 > Generate secrets: `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`
+
+> **Check the deployment before hunting anything else: `curl https://yourdomain.com/api/ready`.**
+> It answers with `{"ready": true}` or a 503 naming every variable still missing.
+>
+> This exists because the failure mode is otherwise unreadable. `assertEnv()` runs
+> at the top of `src/lib/db.ts`, so a missing variable throws while that module is
+> being *imported* — before any route handler, and before any error boundary. The
+> browser gets a bare 500 on every database-touching page while `/` and `/login`
+> keep returning 200, which looks like a routing or DNS problem and is neither.
+> `/api/ready` imports nothing but `src/lib/env.ts` precisely so it still answers
+> on an instance that cannot boot. It reports variable *names* only, never values.
+>
+> Note that `PAYMENT_PROVIDER=stripe` pulls `STRIPE_SECRET_KEY` and
+> `STRIPE_WEBHOOK_SECRET` in with it, so expect a second round of missing names
+> after you set the provider. Re-run the probe after each redeploy until it's green.
 
 > ⚠️ **`PAYMENT_PROVIDER` must not be `mock`.** `src/lib/env.ts` refuses to boot
 > in production with `mock`, `mock-hosted`, or unset — the simulated gateway's
