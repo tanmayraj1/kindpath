@@ -66,7 +66,13 @@ export default async function OrgOverview({ params }: { params: { id: string } }
                 </Badge>
               }
             />
-            <Row label="Price" value={`${formatCAD(org.subscription?.price ?? 0, { maximumFractionDigits: 0 })}/mo`} />
+            {/* Cycle-aware: this row read "/mo" for annual subscriptions too. */}
+            <Row
+              label="Price"
+              value={`${formatCAD(org.subscription?.price ?? 0, { maximumFractionDigits: 0 })}/${
+                org.subscription?.cycle === "annual" ? "yr" : "mo"
+              }`}
+            />
             {org.subscription?.trialEndsAt && (
               <Row label="Trial ends" value={new Date(org.subscription.trialEndsAt).toLocaleDateString("en-CA")} />
             )}

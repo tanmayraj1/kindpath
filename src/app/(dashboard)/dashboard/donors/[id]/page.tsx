@@ -69,7 +69,7 @@ export default async function DonorDetailPage({ params }: { params: { id: string
                   )}
                 </p>
               </div>
-              <div className="grid grid-cols-3 gap-2 border-t border-border pt-4 text-center">
+              <div className="grid grid-cols-1 gap-2 border-t border-border pt-4 text-center sm:grid-cols-3">
                 <div>
                   <p className="font-display text-lg font-bold">{formatCAD(data.totalGiven, { maximumFractionDigits: 0 })}</p>
                   <p className="text-xs text-muted-foreground">Total</p>

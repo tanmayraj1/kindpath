@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
+import { AdminVoidReceiptButton } from "@/components/admin/org-record-actions";
 import { ListSearch, Pagination } from "@/components/ui/list-controls";
 import { listReceipts } from "@/lib/queries/org";
 import { parsePageParams } from "@/lib/pagination";
@@ -47,6 +48,7 @@ export default async function OrgReceipts({
               <Th className="text-right">Eligible</Th>
               <Th className="text-right">Status</Th>
               <Th className="text-right">PDF</Th>
+              <Th className="text-right">Manage</Th>
             </Thead>
             <tbody>
               {receipts.rows.map((r) => (
@@ -71,6 +73,14 @@ export default async function OrgReceipts({
                     >
                       <Download className="size-4" /> PDF
                     </a>
+                  </Td>
+                  <Td>
+                    <AdminVoidReceiptButton
+                      orgId={params.id}
+                      receiptId={r.id}
+                      serial={r.serialNumber}
+                      status={r.status}
+                    />
                   </Td>
                 </Tr>
               ))}

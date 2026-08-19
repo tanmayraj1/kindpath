@@ -134,7 +134,7 @@ export function DonationFlow({
 
             <div className="flex flex-col gap-2">
               <Label>Amount (CAD)</Label>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {PRESETS.map((p) => (
                   <button
                     key={p}

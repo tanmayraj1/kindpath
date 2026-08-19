@@ -15,7 +15,7 @@ export const metadata = { title: "Funds" };
 export default async function FundsPage() {
   const session = await requireOrgUser();
   await assertFeature(session.orgId, "funds");
-  const funds = await listFunds(session.orgId);
+  const funds = (await listFunds(session.orgId)).rows;
 
   return (
     <>

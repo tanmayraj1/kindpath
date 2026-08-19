@@ -8,7 +8,7 @@ export const metadata = { title: "Record a donation" };
 
 export default async function NewDonationPage() {
   const session = await requireOrgUser();
-  const funds = await listFunds(session.orgId);
+  const funds = (await listFunds(session.orgId)).rows;
   const activeFunds = funds.filter((f) => f.isActive).map((f) => ({ id: f.id, name: f.name }));
 
   return (

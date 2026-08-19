@@ -2,6 +2,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
+import { AdminPlanControls } from "@/components/admin/org-record-actions";
 import { ListSearch, Pagination } from "@/components/ui/list-controls";
 import { listRecurringPlans } from "@/lib/queries/org";
 import { parsePageParams } from "@/lib/pagination";
@@ -48,6 +49,7 @@ export default async function OrgRecurring({
               <Th>Next billing</Th>
               <Th className="text-right">Amount</Th>
               <Th className="text-right">Status</Th>
+              <Th className="text-right">Manage</Th>
             </Thead>
             <tbody>
               {plans.rows.map((p) => (
@@ -65,6 +67,9 @@ export default async function OrgRecurring({
                     <Badge variant={statusVariant[p.status] ?? "neutral"} className="capitalize">
                       {p.status}
                     </Badge>
+                  </Td>
+                  <Td>
+                    <AdminPlanControls orgId={params.id} planId={p.id} status={p.status} />
                   </Td>
                 </Tr>
               ))}

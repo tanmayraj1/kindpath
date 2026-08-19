@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { FileCheck2, Download } from "lucide-react";
 import { Topbar } from "@/components/dashboard/topbar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -137,7 +138,14 @@ export default async function ReceiptsPage({
                   {receipts.rows.map((r) => (
                     <Tr key={r.id}>
                       <Td className="font-mono text-xs font-medium">{r.serialNumber}</Td>
-                      <Td className="font-medium">{r.donor}</Td>
+                      <Td className="font-medium">
+                        <Link
+                          href={`/dashboard/donors/${r.donorId}`}
+                          className="hover:text-brand-600 hover:underline"
+                        >
+                          {r.donor}
+                        </Link>
+                      </Td>
                       <Td className="text-muted-foreground">{typeLabel[r.type] ?? r.type}</Td>
                       <Td className="text-muted-foreground">
                         {new Date(r.dateIssued).toLocaleDateString("en-CA")}

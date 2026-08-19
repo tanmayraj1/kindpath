@@ -114,6 +114,9 @@ export function listRecurringPlans(orgId: string, page?: PageParams) {
     ]);
     const rows = plans.map((p) => ({
       id: p.id,
+      // Kept so the row can link to the donor. Flattening to a display string
+      // was why these lists showed a name that looked clickable and wasn't.
+      donorId: p.donorId,
       donor: `${p.donor.firstName} ${p.donor.lastName}`,
       fund: p.fund?.name ?? "—",
       amount: Number(p.amount),
@@ -125,20 +128,41 @@ export function listRecurringPlans(orgId: string, page?: PageParams) {
   });
 }
 
-/** Funds with simple usage counts. */
-export function listFunds(orgId: string) {
+/**
+ * Funds with usage counts.
+ *
+ * Optionally paginated. The dashboard page shows every fund because an
+ * organization has a handful, but God Mode's tab was the one list the scale pass
+ * missed — it loaded all of them with no search, unbounded.
+ */
+export function listFunds(orgId: string, page?: PageParams) {
   return withTenant(orgId, async (tx) => {
-    const funds = await tx.fund.findMany({
-      orderBy: { createdAt: "asc" },
-      include: { _count: { select: { donations: true } } },
-    });
-    return funds.map((f) => ({
+    const q = page?.q ?? "";
+    const where: Prisma.FundWhereInput = q
+      ? {
+          OR: [
+            { name: { contains: q, mode: "insensitive" as const } },
+            { code: { contains: q, mode: "insensitive" as const } },
+          ],
+        }
+      : {};
+    const [total, funds] = await Promise.all([
+      tx.fund.count({ where }),
+      tx.fund.findMany({
+        where,
+        orderBy: { createdAt: "asc" },
+        include: { _count: { select: { donations: true } } },
+        ...(page ? { skip: page.skip, take: page.size } : {}),
+      }),
+    ]);
+    const rows = funds.map((f) => ({
       id: f.id,
       name: f.name,
       code: f.code,
       isActive: f.isActive,
       donationCount: f._count.donations,
     }));
+    return { rows, total, page: page ?? null };
   });
 }
 
@@ -252,6 +276,7 @@ export function listReceipts(orgId: string, page?: PageParams, filters: ReceiptF
         select: {
           id: true,
           serialNumber: true,
+          donorId: true,
           donorNameSnapshot: true,
           documentType: true,
           amount: true,
@@ -266,6 +291,9 @@ export function listReceipts(orgId: string, page?: PageParams, filters: ReceiptF
     const rows = receipts.map((r) => ({
       id: r.id,
       serialNumber: r.serialNumber,
+      // The NAME stays the snapshot (a receipt must show who it was issued to,
+      // even after erasure); the id is only for linking to the live record.
+      donorId: r.donorId,
       donor: r.donorNameSnapshot,
       type: r.documentType,
       amount: Number(r.amount),

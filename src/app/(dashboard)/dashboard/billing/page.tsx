@@ -7,7 +7,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { FormAlert } from "@/components/ui/form-alert";
 import { requireOrgUser } from "@/lib/auth/guards";
 import { getOrgBilling } from "@/lib/queries/billing";
-import { getPaymentInstructions } from "@/lib/subscription-payments";
+import { getPaymentInstructions, listOutstandingInvoices } from "@/lib/subscription-payments";
 import { formatCAD } from "@/lib/utils";
 
 export const metadata = { title: "Billing" };
@@ -27,6 +27,11 @@ export default async function BillingPage() {
   const session = await requireOrgUser();
   const billing = await getOrgBilling(session.orgId);
   const payment = getPaymentInstructions(billing?.outstandingTotal ?? 0);
+  // Which invoices the "Payment due" figure is actually made of. This query
+  // existed with no caller, so an org was told an amount and left to guess which
+  // invoice number to quote on their transfer.
+  const outstanding =
+    (billing?.outstandingTotal ?? 0) > 0 ? await listOutstandingInvoices(session.orgId) : [];
 
   return (
     <>
@@ -99,6 +104,28 @@ export default async function BillingPage() {
                 </CardHeader>
                 <CardContent className="flex flex-col gap-3 text-sm text-muted-foreground">
                   <p>{payment.body}</p>
+                  {outstanding.length > 0 && (
+                    <ul className="flex flex-col gap-1">
+                      {outstanding.map((i) => (
+                        <li key={i.id} className="flex flex-wrap items-center gap-2">
+                          <a
+                            href={`/api/invoices/${i.id}/pdf`}
+                            target="_blank"
+                            rel="noopener"
+                            className="font-mono text-xs font-medium text-brand-600 hover:underline"
+                          >
+                            {i.invoiceNumber}
+                          </a>
+                          <span className="text-foreground">
+                            {formatCAD(Number(i.total))}
+                          </span>
+                          <span className="text-xs">
+                            issued {new Date(i.issuedAt).toLocaleDateString("en-CA")}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   <p>
                     Questions about an invoice?{" "}
                     <a

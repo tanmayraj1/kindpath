@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Repeat } from "lucide-react";
 import { Topbar } from "@/components/dashboard/topbar";
 import { Card, CardContent } from "@/components/ui/card";
@@ -72,7 +73,14 @@ export default async function RecurringPage({
                 <tbody>
                   {plans.rows.map((p) => (
                     <Tr key={p.id}>
-                      <Td className="font-medium">{p.donor}</Td>
+                      <Td className="font-medium">
+                        <Link
+                          href={`/dashboard/donors/${p.donorId}`}
+                          className="hover:text-brand-600 hover:underline"
+                        >
+                          {p.donor}
+                        </Link>
+                      </Td>
                       <Td className="text-muted-foreground">{p.fund}</Td>
                       <Td className="capitalize text-muted-foreground">{p.frequency}</Td>
                       <Td className="text-muted-foreground">

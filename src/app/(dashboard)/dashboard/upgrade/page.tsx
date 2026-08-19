@@ -29,10 +29,27 @@ export default async function UpgradePage({
               {feature ? feature.label : "This feature"} isn&apos;t enabled
             </h2>
             <p className="max-w-sm text-sm text-muted-foreground">
-              {feature?.description ?? "This feature isn't part of your current plan."} Contact your
-              KindPath account manager to enable it for your organization.
+              {feature?.description ?? "This feature isn't part of your current plan."} Upgrading
+              takes effect immediately — nothing you&apos;ve already recorded is affected.
             </p>
-            <Link href="/dashboard" className={buttonVariants({ size: "sm" }) + " mt-2"}>
+            {/* This page previously said "contact your account manager" and gave
+                no email, no phone and no link — a dead end on the one screen
+                whose whole purpose is to convert. */}
+            <div className="mt-2 flex flex-wrap justify-center gap-2">
+              <Link href="/contact" className={buttonVariants({ size: "sm" })}>
+                Talk to us about upgrading
+              </Link>
+              <Link
+                href="/dashboard/billing"
+                className={buttonVariants({ variant: "outline", size: "sm" })}
+              >
+                See your plan
+              </Link>
+            </div>
+            <Link
+              href="/dashboard"
+              className="mt-1 text-sm text-muted-foreground hover:text-foreground hover:underline"
+            >
               Back to dashboard
             </Link>
           </CardContent>

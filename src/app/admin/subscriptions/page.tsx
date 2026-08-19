@@ -48,7 +48,10 @@ export default async function SubscriptionsPage() {
                           : "—"}
                     </Td>
                     <Td className="text-right font-medium">
-                      {formatCAD(s.price, { maximumFractionDigits: 0 })}/mo
+                      {/* The cycle is already in the row; hardcoding "/mo" showed an
+                          annual org at $2,400/yr as $2,400/mo. */}
+                      {formatCAD(s.price, { maximumFractionDigits: 0 })}/
+                      {s.cycle === "annual" ? "yr" : "mo"}
                     </Td>
                     <Td className="text-right">
                       <Badge variant={statusVariant[s.status] ?? "neutral"} className="capitalize">

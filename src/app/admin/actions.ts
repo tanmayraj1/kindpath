@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { adminDb } from "@/lib/db";
+import { withTenant } from "@/lib/tenant";
 import { createSession } from "@/lib/auth/session";
 import { requirePlatformAdmin } from "@/lib/auth/guards";
 import { unusablePasswordHash, sendInvite } from "@/lib/auth/invite";
@@ -144,13 +145,25 @@ export async function runBillingNow() {
  * aborted the admin action itself — the exact inverse of the intended policy
  * (see src/lib/audit.ts).
  */
-async function audit(actorId: string, orgId: string, action: string, entityType?: string, entityId?: string) {
+async function audit(
+  actorId: string,
+  orgId: string,
+  action: string,
+  entityType?: string,
+  entityId?: string,
+  // Privileged changes previously recorded WHAT happened but never what the
+  // value was before or after — so the least-trusted actor on the platform left
+  // the least detailed trail. Org-side and portal-side code already passes these.
+  change?: { before?: unknown; after?: unknown }
+) {
   await auditLog({
     actor: { type: "platform_admin", id: actorId },
     orgId: orgId || null,
     action,
     entityType,
     entityId,
+    before: change?.before,
+    after: change?.after,
     ip: clientIp(),
   });
 }
@@ -183,6 +196,10 @@ export async function updateSubscription(
       ? new Date(Date.now() + (d.cycle === "annual" ? 365 : 30) * 24 * 60 * 60 * 1000)
       : null;
 
+  // Read before writing so the audit records what actually changed. A billing
+  // change is the most disputable thing support can do to a customer.
+  const priorSub = await adminDb.subscription.findUnique({ where: { orgId: d.orgId } });
+
   await adminDb.subscription.upsert({
     where: { orgId: d.orgId },
     create: {
@@ -203,7 +220,24 @@ export async function updateSubscription(
       nextBillingDate,
     },
   });
-  await audit(admin.sub, d.orgId, `subscription.update.${d.plan}.${d.status}`, "subscription", d.orgId);
+  await audit(
+    admin.sub,
+    d.orgId,
+    `subscription.update.${d.plan}.${d.status}`,
+    "subscription",
+    d.orgId,
+    {
+      before: priorSub
+        ? {
+            plan: priorSub.plan,
+            cycle: priorSub.cycle,
+            priceCad: Number(priorSub.priceCad),
+            status: priorSub.status,
+          }
+        : null,
+      after: { plan: d.plan, cycle: d.cycle, priceCad: d.price, status: d.status },
+    }
+  );
   revalidatePath(`/admin/organizations/${d.orgId}/subscription`);
   revalidatePath(`/admin/organizations/${d.orgId}`);
   revalidatePath("/admin/subscriptions");
@@ -218,7 +252,10 @@ export async function revokeAccess(orgId: string): Promise<AdminState> {
   await adminDb.organization.update({ where: { id: orgId }, data: { status: "suspended" } });
   await adminDb.subscription.updateMany({ where: { orgId }, data: { status: "cancelled" } });
   await revokeOrgSessions(orgId);
-  await audit(admin.sub, orgId, "access.revoke", "organization", orgId);
+  await audit(admin.sub, orgId, "access.revoke", "organization", orgId, {
+    before: { status: "active" },
+    after: { status: "suspended" },
+  });
   revalidatePath(`/admin/organizations/${orgId}`);
   revalidatePath("/admin/organizations");
   return { ok: true };
@@ -230,7 +267,10 @@ export async function grantAccess(orgId: string): Promise<AdminState> {
   if (!exists) return { error: "That organization no longer exists." };
   await adminDb.organization.update({ where: { id: orgId }, data: { status: "active" } });
   await adminDb.subscription.updateMany({ where: { orgId }, data: { status: "active" } });
-  await audit(admin.sub, orgId, "access.grant", "organization", orgId);
+  await audit(admin.sub, orgId, "access.grant", "organization", orgId, {
+    before: { status: "suspended" },
+    after: { status: "active" },
+  });
   revalidatePath(`/admin/organizations/${orgId}`);
   revalidatePath("/admin/organizations");
   return { ok: true };
@@ -253,7 +293,9 @@ export async function setFeatureOverride(
     where: { id: orgId },
     data: { featureOverrides: overrides },
   });
-  await audit(admin.sub, orgId, `feature.${state}.${key}`, "organization", orgId);
+  await audit(admin.sub, orgId, `feature.${state}.${key}`, "organization", orgId, {
+    after: { feature: key, state },
+  });
   revalidatePath(`/admin/organizations/${orgId}/features`);
 }
 
@@ -278,6 +320,10 @@ export async function updateOrgDetailsAsAdmin(
   if (d.charityStatus === "registered" && !d.craRegistrationNumber) {
     return { error: "Registered charities need a CRA registration number." };
   }
+  // The CRA registration number and signatory are printed on every official
+  // receipt this charity issues, so a change here needs a before/after.
+  const priorOrg = await adminDb.organization.findUnique({ where: { id: d.orgId } });
+
   await adminDb.organization.update({
     where: { id: d.orgId },
     data: {
@@ -288,7 +334,22 @@ export async function updateOrgDetailsAsAdmin(
       receiptLocality: d.receiptLocality || null,
     },
   });
-  await audit(admin.sub, d.orgId, "org.update", "organization", d.orgId);
+  await audit(admin.sub, d.orgId, "org.update", "organization", d.orgId, {
+    before: priorOrg && {
+      name: priorOrg.name,
+      charityStatus: priorOrg.charityStatus,
+      craRegistrationNumber: priorOrg.craRegistrationNumber,
+      authorizedSignatory: priorOrg.authorizedSignatory,
+      receiptLocality: priorOrg.receiptLocality,
+    },
+    after: {
+      name: d.name,
+      charityStatus: d.charityStatus,
+      craRegistrationNumber: d.craRegistrationNumber || null,
+      authorizedSignatory: d.authorizedSignatory || null,
+      receiptLocality: d.receiptLocality || null,
+    },
+  });
   revalidatePath(`/admin/organizations/${d.orgId}/settings`);
   revalidatePath(`/admin/organizations/${d.orgId}`);
   return { ok: true };
@@ -673,5 +734,76 @@ export async function adminSetOrgUserStatus(
     ip: clientIp(),
   });
   revalidatePath(`/admin/organizations/${user.orgId}/users`);
+  return { ok: true };
+}
+
+// ---- acting on an org's records (support) ----
+/**
+ * Support could SEE an org's recurring plans and receipts and act on neither,
+ * while the org's own staff have controls for both on the same data. Those two
+ * are what support is most often called about: a gift stuck past-due, and a
+ * receipt issued in error.
+ *
+ * Both go through the org's tenant context rather than raw adminDb, so the
+ * same row-level isolation applies as when the org does it themselves, and both
+ * record who did it — an admin acting inside someone else's organization is
+ * exactly the thing an audit trail exists for.
+ */
+export async function adminSetPlanStatus(
+  orgId: string,
+  planId: string,
+  action: "pause" | "resume" | "cancel"
+): Promise<AdminState> {
+  const admin = await requirePlatformAdmin();
+  const status = action === "pause" ? "paused" : action === "resume" ? "active" : "cancelled";
+
+  const before = await withTenant(orgId, async (tx) => {
+    const plan = await tx.recurringPlan.findFirst({ where: { id: planId } });
+    if (!plan) return null;
+    await tx.recurringPlan.update({
+      where: { id: planId },
+      data: { status, cancelledAt: action === "cancel" ? new Date() : null },
+    });
+    return plan.status;
+  });
+  if (!before) return { error: "That plan no longer exists." };
+
+  await audit(admin.sub, orgId, `recurring_plan.${action}`, "recurring_plan", planId, {
+    before: { status: before },
+    after: { status },
+  });
+  revalidatePath(`/admin/organizations/${orgId}/recurring`);
+  return { ok: true };
+}
+
+export async function adminVoidReceipt(
+  orgId: string,
+  receiptId: string,
+  reason: string
+): Promise<AdminState> {
+  const admin = await requirePlatformAdmin();
+  if (reason.trim().length < 3) return { error: "Give a reason — it is kept with the receipt." };
+
+  const result = await withTenant(orgId, async (tx) => {
+    const receipt = await tx.receipt.findFirst({ where: { id: receiptId } });
+    if (!receipt) return "missing" as const;
+    if (receipt.status !== "issued") return "not_issued" as const;
+    await tx.receipt.update({
+      where: { id: receiptId },
+      data: { status: "voided", voidReason: reason.trim() },
+    });
+    return receipt.serialNumber;
+  });
+
+  if (result === "missing") return { error: "That receipt no longer exists." };
+  if (result === "not_issued") return { error: "That receipt has already been voided or replaced." };
+
+  // A voided official receipt is a CRA-relevant event. The serial is recorded so
+  // the trail names the document, not just its id.
+  await audit(admin.sub, orgId, "receipt.void", "receipt", receiptId, {
+    before: { status: "issued", serialNumber: result },
+    after: { status: "voided", reason: reason.trim() },
+  });
+  revalidatePath(`/admin/organizations/${orgId}/receipts`);
   return { ok: true };
 }

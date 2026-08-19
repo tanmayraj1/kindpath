@@ -10,6 +10,7 @@ import {
 import { Topbar } from "@/components/dashboard/topbar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
 import { buttonVariants } from "@/components/ui/button";
 import { cn, formatCAD } from "@/lib/utils";
 import { requireOrgUser } from "@/lib/auth/guards";
@@ -220,24 +221,4 @@ export default async function DashboardPage() {
   );
 }
 
-function EmptyState({
-  title,
-  body,
-  icon,
-}: {
-  title: string;
-  body: string;
-  icon?: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-col items-center gap-2 py-10 text-center">
-      {icon && (
-        <span className="grid size-10 place-items-center rounded-xl bg-secondary text-muted-foreground">
-          {icon}
-        </span>
-      )}
-      <p className="font-medium">{title}</p>
-      <p className="max-w-xs text-sm text-muted-foreground">{body}</p>
-    </div>
-  );
-}
+

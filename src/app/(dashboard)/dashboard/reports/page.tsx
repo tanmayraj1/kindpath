@@ -75,7 +75,10 @@ export default async function ReportsPage() {
               {report.months.every((m) => m.total === 0) ? (
                 <EmptyState icon={<BarChart3 className="size-5" />} title="No data yet" />
               ) : (
-                <div className="flex h-48 items-end gap-2">
+                // Twelve bars with month labels collide below ~500px, so the
+                // chart scrolls inside its card rather than overlapping.
+                <div className="overflow-x-auto">
+                <div className="flex h-48 min-w-[32rem] items-end gap-2">
                   {report.months.map((m, i) => (
                     <div key={i} className="flex flex-1 flex-col items-center gap-2">
                       <div className="flex w-full flex-1 items-end" title={formatCAD(m.total)}>
@@ -87,6 +90,7 @@ export default async function ReportsPage() {
                       <span className="text-[10px] text-muted-foreground">{m.label}</span>
                     </div>
                   ))}
+                </div>
                 </div>
               )}
             </CardContent>
