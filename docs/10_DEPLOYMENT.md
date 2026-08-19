@@ -101,6 +101,22 @@ Do **not** run `npm run db:seed` in production (that's demo data).
 > protection is essentially absent. This applies to login, 2FA, forgot-password,
 > donation charges and the webhook endpoint.
 
+### Why `vercel.json` looks the way it does
+
+`vercel.json` is schema-validated by Vercel and **rejects any key it doesn't
+recognise** — including comment-style keys like `_comment`. A build that fails
+with *"should NOT have additional property"* means someone added one. Keep the
+reasoning here instead:
+
+- **`"regions": ["yul1"]`** — donor PII is processed where the function runs, not
+  only where it is stored. This document makes an explicit Quebec Law 25
+  residency claim, and Vercel defaults to `iad1` (Washington), so functions are
+  pinned to Montreal.
+- **`/api/cron/campaigns` runs daily, not hourly** — the Hobby plan permits
+  once-daily cron only, and a rejected or silently-disabled schedule would strand
+  every bulk send at its first 50 recipients with no error anywhere. On Pro,
+  raise it to `0 * * * *` for same-hour delivery.
+
 The build runs `vercel-build`, which applies migrations and RLS policies before
 building. This is deliberate: the previous documented order was `git push` (which
 auto-deploys) and *then* `npm run db:deploy` by hand, i.e. it shipped code ahead

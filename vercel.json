@@ -1,6 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "_regions": "Donor PII is processed where the function runs, not only where it is stored. The deployment docs make an explicit Quebec Law 25 residency claim, and Vercel defaults to iad1 (Washington) — so functions are pinned to Montreal.",
   "regions": ["yul1"],
   "crons": [
     {
@@ -8,7 +7,6 @@
       "schedule": "0 9 * * *"
     },
     {
-      "_comment": "Daily, not hourly: the Vercel Hobby plan permits once-daily cron only, and a rejected or silently-disabled schedule would strand every bulk send at its first 50 recipients with no error anywhere. On Pro, raise this to '0 * * * *' for same-hour delivery.",
       "path": "/api/cron/campaigns",
       "schedule": "30 9 * * *"
     }
