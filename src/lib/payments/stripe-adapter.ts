@@ -16,6 +16,7 @@ import type {
   HostedSaleInit,
   ConfirmResult,
 } from "./types";
+import { UnsupportedWebhookEvent } from "./types";
 
 const STRIPE_API = "https://api.stripe.com/v1";
 /** Reject webhooks whose timestamp is older than this (replay protection). */
@@ -344,7 +345,9 @@ export class StripeAdapter implements PaymentProvider {
     };
     const mapped = typeMap[event.type];
     if (!mapped) {
-      throw new Error(`Stripe webhook: unhandled event type ${event.type}`);
+      // Signature was valid; we just don't act on this type. Distinct from a
+      // rejection so the route can 2xx it — see UnsupportedWebhookEvent.
+      throw new UnsupportedWebhookEvent(event.type);
     }
 
     return {

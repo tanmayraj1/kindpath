@@ -1,5 +1,5 @@
 import { adminDb } from "@/lib/db";
-import { getPaymentProvider } from "@/lib/payments";
+import { getPaymentProvider, UnsupportedWebhookEvent } from "@/lib/payments";
 import { handlePaymentEvent } from "@/lib/payment-events";
 import { captureError, log } from "@/lib/observability";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
@@ -39,6 +39,20 @@ export async function POST(req: Request) {
     event = await provider.verifyWebhook({ headers, body });
   } catch (e) {
     const message = e instanceof Error ? e.message : "verification failed";
+
+    // Signature was good; the type just isn't one we act on. Acknowledge it.
+    // Providers invite you to subscribe an endpoint to everything they emit, so
+    // this is ordinary traffic — answering 400 would make the provider retry it
+    // with backoff and eventually disable the endpoint, taking the events we do
+    // handle down with it, while the log blamed a signing secret that was fine.
+    if (e instanceof UnsupportedWebhookEvent) {
+      log("info", "webhook event ignored", {
+        source: "webhook.pos",
+        provider: provider.name,
+        eventType: e.eventType,
+      });
+      return Response.json({ ok: true, ignored: e.eventType });
+    }
 
     // Some providers have no webhook channel at all (WeVend reconciles via the
     // return URL + confirmTransaction). That is a configuration fact, not a

@@ -132,3 +132,25 @@ export type ConfirmResult = {
   failureCode?: string;
   failureMessage?: string;
 };
+
+/**
+ * The webhook's signature verified, but the event type isn't one KindPath acts
+ * on. This is NOT a rejection — it must be acknowledged with a 2xx.
+ *
+ * Providers let you subscribe an endpoint to every event they emit, and Stripe's
+ * dashboard actively encourages it. Treating an unrecognised type as a failure
+ * makes the provider retry it with backoff and eventually disable the endpoint —
+ * taking the four events we *do* care about down with it — while the logs blame
+ * a signing secret that was correct all along.
+ *
+ * A distinct class rather than message-matching so the route can tell the two
+ * apart without depending on the wording of an error string.
+ */
+export class UnsupportedWebhookEvent extends Error {
+  readonly eventType: string;
+  constructor(eventType: string) {
+    super(`Unhandled webhook event type: ${eventType}`);
+    this.name = "UnsupportedWebhookEvent";
+    this.eventType = eventType;
+  }
+}

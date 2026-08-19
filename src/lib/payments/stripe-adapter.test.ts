@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { createHmac } from "crypto";
 import { StripeAdapter } from "./stripe-adapter";
+import { UnsupportedWebhookEvent } from "./types";
 
 const KEY = "sk_test_abc123";
 const WHSEC = "whsec_testsecret";
@@ -217,11 +218,25 @@ describe("StripeAdapter.verifyWebhook", () => {
     ).rejects.toThrow(/timestamp outside tolerance/);
   });
 
-  it("rejects unhandled event types", async () => {
+  // A type we don't act on must be distinguishable from a rejection: the route
+  // acknowledges the first with a 2xx and refuses the second, and getting that
+  // backwards makes Stripe retry-then-disable the endpoint over events like this.
+  it("flags unhandled event types as unsupported, not as a bad signature", async () => {
     const other = signedWebhook({ id: "evt_3", type: "customer.created", data: { object: {} } });
     await expect(
       adapter(vi.fn() as unknown as typeof fetch).verifyWebhook(other)
-    ).rejects.toThrow(/unhandled event type/);
+    ).rejects.toBeInstanceOf(UnsupportedWebhookEvent);
+  });
+
+  it("does not flag a forged signature as merely unsupported", async () => {
+    const forgedUnknown = signedWebhook({ id: "evt_4", type: "customer.created", data: { object: {} } });
+    forgedUnknown.headers["stripe-signature"] = forgedUnknown.headers["stripe-signature"].replace(
+      /v1=[0-9a-f]+/,
+      "v1=" + "0".repeat(64)
+    );
+    await expect(
+      adapter(vi.fn() as unknown as typeof fetch).verifyWebhook(forgedUnknown)
+    ).rejects.not.toBeInstanceOf(UnsupportedWebhookEvent);
   });
 });
 
