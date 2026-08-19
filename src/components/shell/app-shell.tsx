@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
+import { CommandPalette } from "./command-palette";
 import { cn } from "@/lib/utils";
 
 export type NavItem = { href: string; label: string; icon: LucideIcon };
@@ -150,6 +151,19 @@ export function AppShell({
   return (
     <MobileNavContext.Provider value={{ open: () => setOpen(true) }}>
       <div className="flex min-h-screen bg-secondary/30">
+        {/* ⌘K navigation. Built from the same `items` list as the sidebar, so a
+            page added to the nav is reachable here without a second registry. */}
+        <CommandPalette items={items} base={base} />
+
+        {/* Keyboard users shouldn't have to tab through the whole sidebar to
+            reach the page content. */}
+        <a
+          href="#main"
+          className="sr-only left-4 top-4 z-[70] rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground focus:not-sr-only focus:fixed"
+        >
+          Skip to content
+        </a>
+
         {/* desktop sidebar */}
         <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-card lg:flex">
           <div className="flex h-16 items-center border-b border-border px-6">

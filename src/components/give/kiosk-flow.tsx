@@ -118,8 +118,9 @@ export function KioskFlow({ org, hosted }: { org: Org; hosted: boolean }) {
               <button
                 key={v}
                 onClick={() => setAmount(v)}
+                aria-pressed={amount === v}
                 className={
-                  "rounded-2xl border-2 py-8 text-3xl font-bold transition-all " +
+                  "tnum rounded-2xl border-2 py-8 text-3xl font-bold transition-all " +
                   (amount === v
                     ? "border-brand-500 bg-brand-50 text-brand-700 ring-4 ring-brand-500/20"
                     : "border-border hover:border-brand-300 hover:bg-secondary")
