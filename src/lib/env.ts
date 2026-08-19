@@ -14,6 +14,12 @@ const PROD_REQUIRED = [
   // Without this, src/lib/email.ts silently falls back to console logging and
   // every receipt is recorded as delivered while nothing actually sends.
   "RESEND_API_KEY",
+  // Resend rejects any send whose From address isn't on a domain verified to the
+  // account. The fallback in src/lib/email.ts is an address on a domain we don't
+  // own, so a deployment with RESEND_API_KEY set but this unset doesn't degrade —
+  // it fails every single send, including receipts and password-reset links,
+  // while the API key's presence makes the code believe mail is going out.
+  "EMAIL_FROM",
   // Encrypts each org's gateway credentials. It falls back to AUTH_SECRET, so
   // leaving it unset couples credential decryption to session signing: rotating
   // AUTH_SECRET would destroy every org's stored gateway credentials and
@@ -23,10 +29,22 @@ const PROD_REQUIRED = [
 
 let validated = false;
 
-export function assertEnv() {
-  if (validated) return;
-  validated = true;
-
+/**
+ * Collect the names of every missing/invalid required variable, WITHOUT throwing.
+ *
+ * Split out of `assertEnv` so a diagnostic route can report configuration state
+ * on an instance that is otherwise unbootable: `assertEnv()` throws while
+ * `src/lib/db.ts` is being imported, which kills every route that touches the
+ * database before its handler — or any error boundary — ever runs. The only
+ * evidence then lives in the platform's function logs, and the browser sees a
+ * bare 500 with nothing to act on.
+ *
+ * Returns variable NAMES only, never values. The names are already public (they
+ * are listed in .env.example in the repo), so this discloses nothing a reader of
+ * the source doesn't have — while the fact that the app is misconfigured is
+ * already evident from the 500s it is emitted to explain.
+ */
+export function missingEnv(): string[] {
   const isProd = process.env.NODE_ENV === "production";
   const missing: string[] = [];
 
@@ -73,6 +91,16 @@ export function assertEnv() {
       }
     }
   }
+
+  return missing;
+}
+
+export function assertEnv() {
+  if (validated) return;
+  validated = true;
+
+  const isProd = process.env.NODE_ENV === "production";
+  const missing = missingEnv();
 
   if (missing.length) {
     const msg = `Missing required environment variables: ${missing.join(", ")}`;

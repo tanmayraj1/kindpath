@@ -123,6 +123,12 @@ enum ReceiptStatus {
 
 enum NotificationChannel {
   email
+  /// RESERVED — not implemented. No code path writes this value; there is no SMS
+  /// provider, no phone-consent capture, and CASL's rules for SMS are stricter
+  /// than for email. Kept because Postgres cannot drop an enum value, and
+  /// recreating the type would rewrite the notifications table for no gain.
+  /// Wiring SMS means adding a sender, consent, and a delivery-status path —
+  /// not just writing this value.
   sms
 }
 
@@ -286,34 +292,32 @@ model Organization {
 
 /**
  * A queued bulk email send, drained in batches by the campaign cron.
- *
  * Sending used to happen inline in the server action: a serial loop of one HTTPS
  * call plus one UPDATE per recipient, capped at 200 with no cursor — so an
  * organization with 5,000 consented donors could never finish a send at all, and
  * a request that died partway left no way to resume.
- *
  * Holding subject/body/segment plus the keyset cursor here is what makes a send
  * resumable: a killed run picks up at `cursorDonorId` instead of starting over
  * (which would re-mail everyone already reached).
  */
 model EmailCampaign {
-  id       String @id @default(uuid())
-  orgId    String @map("org_id")
-  segment  String
-  subject  String
-  body     String
+  id                String    @id @default(uuid())
+  orgId             String    @map("org_id")
+  segment           String
+  subject           String
+  body              String
   /// queued | sending | sent | failed
-  status   String @default("queued")
+  status            String    @default("queued")
   /// Keyset cursor: the last donor id successfully processed.
-  cursorDonorId String? @map("cursor_donor_id")
-  recipientEstimate Int  @default(0) @map("recipient_estimate")
-  sentCount    Int @default(0) @map("sent_count")
-  failedCount  Int @default(0) @map("failed_count")
-  error        String?
-  createdByUserId String?  @map("created_by_user_id")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  startedAt    DateTime? @map("started_at")
-  finishedAt   DateTime? @map("finished_at")
+  cursorDonorId     String?   @map("cursor_donor_id")
+  recipientEstimate Int       @default(0) @map("recipient_estimate")
+  sentCount         Int       @default(0) @map("sent_count")
+  failedCount       Int       @default(0) @map("failed_count")
+  error             String?
+  createdByUserId   String?   @map("created_by_user_id")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  startedAt         DateTime? @map("started_at")
+  finishedAt        DateTime? @map("finished_at")
 
   org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
