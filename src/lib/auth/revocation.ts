@@ -55,9 +55,14 @@ export async function checkSession(claims: SessionClaims): Promise<RevocationRea
     case "donor": {
       const d = await adminDb.donor.findUnique({
         where: { id: claims.sub },
-        select: { tokenVersion: true, org: { select: { status: true } } },
+        select: { tokenVersion: true, anonymizedAt: true, org: { select: { status: true } } },
       });
       if (!d) return "not_found";
+      // An erased donor is not a person we hold an account for any more. The
+      // tokenVersion bump in anonymizeDonor already ends their sessions; this is
+      // the belt to that braces, and it also covers a row erased by any future
+      // path that forgets to revoke.
+      if (d.anonymizedAt) return "disabled";
       if (d.org.status !== "active") return "org_suspended";
       return d.tokenVersion === version ? "ok" : "stale_token";
     }

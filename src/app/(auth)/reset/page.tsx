@@ -17,7 +17,10 @@ export default function ResetPasswordPage({
       <div className="flex flex-col gap-2">
         <h1 className="font-display text-2xl font-bold tracking-tight">Choose a new password</h1>
         <p className="text-sm text-muted-foreground">
-          This link can be used once and expires an hour after it was sent.
+          {/* Deliberately not "expires in an hour": this page serves reset links
+              (1 hour) AND first-time setup links (7 days) at the same URL, so a
+              fixed number told invited users their still-valid link was dead. */}
+          This link can be used once. If it&apos;s expired, request a new one.
         </p>
       </div>
 

@@ -77,7 +77,39 @@ export async function issueResetToken(args: {
 
 export type ConsumeResult =
   | { ok: true; principal: Principal; principalId: string; orgId: string | null }
-  | { ok: false; reason: "invalid" | "expired" | "used" };
+  | { ok: false; reason: "invalid" | "expired" | "used" | "revoked" };
+
+/**
+ * Is this principal still entitled to set a password?
+ *
+ * A token is a bearer credential that outlives the state it was issued against.
+ * Without this check, a link mailed before an account was erased or disabled
+ * still writes a fresh password onto that row — re-arming a record the operator
+ * deliberately took out of service, and in the donor case undoing an erasure
+ * that the Privacy Act obliged us to perform.
+ */
+async function stillEligible(principal: Principal, id: string): Promise<boolean> {
+  switch (principal) {
+    case "platform": {
+      const row = await adminDb.platformAdmin.findUnique({ where: { id }, select: { status: true } });
+      return row?.status === "active";
+    }
+    case "org": {
+      const row = await adminDb.orgUser.findUnique({ where: { id }, select: { status: true } });
+      return row?.status === "active";
+    }
+    case "volunteer": {
+      const row = await adminDb.volunteer.findUnique({ where: { id }, select: { status: true } });
+      return row?.status === "active";
+    }
+    case "donor": {
+      const row = await adminDb.donor.findUnique({ where: { id }, select: { anonymizedAt: true } });
+      return row != null && row.anonymizedAt == null;
+    }
+    default:
+      return false;
+  }
+}
 
 /**
  * Verify a raw token and set the new password atomically. Returns the principal
@@ -89,11 +121,29 @@ export async function consumeResetToken(raw: string, newPassword: string): Promi
 
   const record = await adminDb.passwordResetToken.findUnique({ where: { tokenHash: digest } });
   if (!record || !digestsEqual(record.tokenHash, digest)) return { ok: false, reason: "invalid" };
+
+  // Purpose is load-bearing, not a label. This table also holds "verify" tokens,
+  // which are emailed on signup, live for seven days, and are meant to prove an
+  // address — not to grant the power to set a password. Without this check that
+  // verification link is a working credential at /reset.
+  if (record.purpose !== "reset" && record.purpose !== "invite") {
+    return { ok: false, reason: "invalid" };
+  }
+
   if (record.usedAt) return { ok: false, reason: "used" };
   if (record.expiresAt.getTime() < Date.now()) return { ok: false, reason: "expired" };
 
-  const passwordHash = await hashPassword(newPassword);
   const principal = record.principal as Principal;
+  if (!(await stillEligible(principal, record.principalId))) {
+    // Spend the token so a revoked account can't keep retrying it.
+    await adminDb.passwordResetToken.update({
+      where: { id: record.id },
+      data: { usedAt: new Date() },
+    });
+    return { ok: false, reason: "revoked" };
+  }
+
+  const passwordHash = await hashPassword(newPassword);
 
   // Mark used first: if the password write fails, the token is spent rather than
   // left replayable. The user can always request another link.
@@ -130,6 +180,20 @@ export async function consumeResetToken(raw: string, newPassword: string): Promi
   await revokeSessions(principal, record.principalId);
 
   return { ok: true, principal, principalId: record.principalId, orgId: record.orgId };
+}
+
+/**
+ * Spend every outstanding token for a principal.
+ *
+ * Called when an account is erased or disabled. Revoking sessions alone is not
+ * enough: an unused invite or reset link is a standing invitation to create a
+ * NEW session, so it has to be spent at the same moment.
+ */
+export async function invalidateTokensFor(principal: Principal, principalId: string): Promise<void> {
+  await adminDb.passwordResetToken.updateMany({
+    where: { principal, principalId, usedAt: null },
+    data: { usedAt: new Date() },
+  });
 }
 
 /** Absolute URL a recipient clicks. Kept here so email + tests agree on the shape. */

@@ -196,6 +196,9 @@ export function getOrgDonorDetail(orgId: string, donorId: string) {
         addressComplete: donor.addressStatus === "complete",
         casl: donor.caslConsent,
         anonymizedAt: donor.anonymizedAt,
+        // Whether this donor can sign into the portal at all. Never the hash
+        // itself — only whether one exists.
+        hasPortalAccess: donor.passwordHash != null,
       },
       totalGiven: Number(agg._sum.eligibleAmount ?? 0),
       donations: donations.map((d) => ({

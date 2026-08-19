@@ -1,5 +1,6 @@
 "use server";
 
+import { randomBytes } from "node:crypto";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { adminDb } from "@/lib/db";
@@ -10,6 +11,13 @@ import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { verifyTotp } from "@/lib/auth/totp";
 import { isLocked, lockMinutesRemaining, registerFailure, registerSuccess } from "@/lib/auth/lockout";
 import { issueResetToken, consumeResetToken, resetUrl } from "@/lib/auth/password-reset";
+import { findCandidates, withPassword, type Candidate } from "@/lib/auth/candidates";
+import { safeNext } from "@/lib/auth/portals";
+import {
+  createAccountTicket,
+  readAccountTicket,
+  clearAccountTicket,
+} from "@/lib/auth/account-ticket";
 import { getSession } from "@/lib/auth/session";
 import { revokeSessions } from "@/lib/auth/revocation";
 import { sendEmailWithRetry, emailLayout, escapeHtml } from "@/lib/email";
@@ -37,108 +45,34 @@ const loginSchema = z.object({
 });
 
 /**
- * One account across the four principal tables, normalized so the credential
- * check, the lockout bookkeeping and the session claims are written once rather
- * than four subtly-different times.
+ * A dummy hash to verify against when an email matches nothing.
+ *
+ * Without it, an unknown address returns before any bcrypt work happens while a
+ * known one pays for a verification — a timing signal that answers "does this
+ * email have an account here?" for an anonymous caller. Generated once at module
+ * load from a value nobody holds.
  */
-type Candidate = {
-  kind: SessionClaims["kind"];
-  id: string;
-  passwordHash: string;
-  claims: SessionClaims;
-  account: { failedLoginCount: number; lockedUntil: Date | null };
-  mustChangePassword: boolean;
-  needsTwoFactor: boolean;
-};
+const DUMMY_HASH_PROMISE = hashPassword(randomBytes(24).toString("base64url"));
 
-/** Find the single account matching an email, across every principal type. */
-async function findCandidate(email: string): Promise<Candidate | null> {
-  const platform = await adminDb.platformAdmin.findUnique({ where: { email } });
-  if (platform) {
-    return {
-      kind: "platform",
-      id: platform.id,
-      passwordHash: platform.passwordHash,
-      claims: {
-        sub: platform.id,
-        kind: "platform",
-        role: platform.role,
-        name: platform.name,
-        email: platform.email,
-        v: platform.tokenVersion,
-      },
-      account: { failedLoginCount: platform.failedLoginCount, lockedUntil: platform.lockedUntil },
-      mustChangePassword: platform.mustChangePassword,
-      needsTwoFactor: false,
-    };
+/** Same message whether the account is unknown or the password is wrong. */
+const GENERIC = "Incorrect email or password.";
+
+/**
+ * Finish signing a candidate in: second factor, forced password change, or a
+ * session. Shared by the direct path and the account chooser so the three checks
+ * can never drift apart between them.
+ */
+async function completeLogin(candidate: Candidate, next: string | null): Promise<never> {
+  if (candidate.needsTwoFactor) {
+    await createTwoFactorTicket(candidate.id);
+    redirect(next ? `/login/2fa?next=${encodeURIComponent(next)}` : "/login/2fa");
   }
-
-  const orgUser = await adminDb.orgUser.findFirst({ where: { email, status: "active" } });
-  if (orgUser) {
-    return {
-      kind: "org",
-      id: orgUser.id,
-      passwordHash: orgUser.passwordHash,
-      claims: {
-        sub: orgUser.id,
-        kind: "org",
-        role: orgUser.role,
-        orgId: orgUser.orgId,
-        name: orgUser.name,
-        email: orgUser.email,
-        v: orgUser.tokenVersion,
-      },
-      account: { failedLoginCount: orgUser.failedLoginCount, lockedUntil: orgUser.lockedUntil },
-      mustChangePassword: orgUser.mustChangePassword,
-      needsTwoFactor: !!orgUser.totpEnabledAt,
-    };
+  await createSession(candidate.claims);
+  // Invited users and admin-reset accounts must pick their own password first.
+  if (candidate.mustChangePassword) {
+    redirect(next ? `/change-password?next=${encodeURIComponent(next)}` : "/change-password");
   }
-
-  const volunteer = await adminDb.volunteer.findFirst({
-    where: { email, status: "active", passwordHash: { not: null } },
-  });
-  if (volunteer?.passwordHash) {
-    return {
-      kind: "volunteer",
-      id: volunteer.id,
-      passwordHash: volunteer.passwordHash,
-      claims: {
-        sub: volunteer.id,
-        kind: "volunteer",
-        role: "volunteer",
-        orgId: volunteer.orgId,
-        name: `${volunteer.firstName} ${volunteer.lastName}`,
-        email: volunteer.email,
-        v: volunteer.tokenVersion,
-      },
-      account: { failedLoginCount: volunteer.failedLoginCount, lockedUntil: volunteer.lockedUntil },
-      mustChangePassword: volunteer.mustChangePassword,
-      needsTwoFactor: false,
-    };
-  }
-
-  const donor = await adminDb.donor.findFirst({ where: { email, passwordHash: { not: null } } });
-  if (donor?.passwordHash) {
-    return {
-      kind: "donor",
-      id: donor.id,
-      passwordHash: donor.passwordHash,
-      claims: {
-        sub: donor.id,
-        kind: "donor",
-        role: "donor",
-        orgId: donor.orgId,
-        name: `${donor.firstName} ${donor.lastName}`,
-        email: donor.email,
-        v: donor.tokenVersion,
-      },
-      account: { failedLoginCount: donor.failedLoginCount, lockedUntil: donor.lockedUntil },
-      mustChangePassword: donor.mustChangePassword,
-      needsTwoFactor: false,
-    };
-  }
-
-  return null;
+  redirect(safeNext(next, candidate.kind));
 }
 
 export async function loginAction(
@@ -156,41 +90,94 @@ export async function loginAction(
     return { error: "Too many attempts. Please wait a minute and try again." };
   }
   const { email, password } = parsed.data;
+  const next = typeof formData.get("next") === "string" ? String(formData.get("next")) : null;
 
   // Pre-tenant lookups use adminDb (bypasses RLS).
-  const candidate = await findCandidate(email);
+  // An email can legitimately match several accounts — donors, volunteers and
+  // org users are unique per organization, not globally.
+  const all = await findCandidates(email);
+  const candidates = withPassword(all);
 
-  // Same message whether the account is unknown or the password is wrong, so the
-  // form can't be used to enumerate which emails have accounts.
-  const GENERIC = "Incorrect email or password.";
-  if (!candidate) return { error: GENERIC };
+  if (candidates.length === 0) {
+    // Equalise timing against the case where an account exists (see DUMMY_HASH).
+    await verifyPassword(password, await DUMMY_HASH_PROMISE);
+    return { error: GENERIC };
+  }
 
-  if (isLocked(candidate.account)) {
+  const unlocked = candidates.filter((c) => !isLocked(c.account));
+  if (unlocked.length === 0) {
+    const soonest = candidates.reduce((a, b) =>
+      lockMinutesRemaining(a.account) <= lockMinutesRemaining(b.account) ? a : b
+    );
     return {
       error: `Too many failed attempts. This account is locked for ${lockMinutesRemaining(
-        candidate.account
+        soonest.account
       )} more minute(s).`,
     };
   }
 
-  if (!(await verifyPassword(password, candidate.passwordHash))) {
-    await registerFailure(candidate.kind, candidate.id, candidate.account);
+  const verified: typeof unlocked = [];
+  for (const c of unlocked) {
+    if (await verifyPassword(password, c.passwordHash)) verified.push(c);
+  }
+
+  if (verified.length === 0) {
+    // Count the failure against EVERY unlocked sibling. Charging only the first
+    // would let an attacker spread guesses across an address's other accounts
+    // and never trip a lockout on any of them.
+    await Promise.all(unlocked.map((c) => registerFailure(c.kind, c.id, c.account)));
     return { error: GENERIC };
   }
 
-  await registerSuccess(candidate.kind, candidate.id, candidate.account);
+  await Promise.all(verified.map((c) => registerSuccess(c.kind, c.id, c.account)));
 
-  // 2FA: don't hand out a session yet — issue a short-lived ticket and send them
-  // to the second-factor challenge.
-  if (candidate.needsTwoFactor) {
-    await createTwoFactorTicket(candidate.id);
-    redirect("/login/2fa");
+  if (verified.length === 1) {
+    await completeLogin(verified[0], next);
   }
 
-  await createSession(candidate.claims);
-  // Invited users and admin-reset accounts must pick their own password before
-  // they can reach anything else.
-  redirect(candidate.mustChangePassword ? "/change-password" : portalFor[candidate.kind]);
+  // More than one account shares this password. Ask which one — safe now, and
+  // only now, because the password has already been proven against each of them.
+  await createAccountTicket(
+    verified.map((c) => ({ kind: c.kind, id: c.id })),
+    next
+  );
+  redirect("/login/choose");
+}
+
+/**
+ * Exchange an account-chooser ticket for a session.
+ *
+ * The chosen id must appear in the ticket, which was written only after the
+ * password verified against those exact rows. That membership check is the whole
+ * security of this endpoint.
+ */
+export async function chooseAccountAction(
+  _prev: AuthState,
+  formData: FormData
+): Promise<AuthState> {
+  const ticket = await readAccountTicket();
+  if (!ticket) redirect("/login");
+
+  // The submitter's own value: "<kind>:<id>". Only the clicked button is posted.
+  const [kind = "", id = ""] = String(formData.get("account") ?? "").split(":");
+  if (!ticket.accounts.some((a) => a.kind === kind && a.id === id)) {
+    clearAccountTicket();
+    redirect("/login");
+  }
+
+  // Re-read the account rather than trusting anything carried in the cookie, so
+  // a disable or erasure between the two steps still takes effect.
+  const candidate = (await findCandidates(String(formData.get("email") ?? ""))).find(
+    (c) => c.kind === kind && c.id === id
+  );
+  if (!candidate) {
+    clearAccountTicket();
+    return { error: "That account is no longer available. Please sign in again." };
+  }
+
+  clearAccountTicket();
+  // Always redirects; the return keeps the signature honest for the type system.
+  return completeLogin(candidate, ticket.next);
 }
 
 // ---------------- 2FA CHALLENGE (org users with TOTP) ----------------
@@ -242,7 +229,14 @@ export async function verifyTwoFactorAction(
     email: user.email,
     v: user.tokenVersion,
   });
-  redirect(user.mustChangePassword ? "/change-password" : "/dashboard");
+  const next = typeof formData.get("next") === "string" ? String(formData.get("next")) : null;
+  redirect(
+    user.mustChangePassword
+      ? next
+        ? `/change-password?next=${encodeURIComponent(next)}`
+        : "/change-password"
+      : safeNext(next, "org")
+  );
 }
 
 // ---------------- SIGNUP (org) ----------------
@@ -373,33 +367,66 @@ export async function requestPasswordReset(
     return { error: "Too many requests. Please wait a few minutes and try again." };
   }
 
-  const candidate = await findCandidate(email);
-  if (candidate) {
+  // Per-address limit on top of the per-IP one. Without it a botnet can point
+  // thousands of IPs at one donor and mail-bomb them with reset links.
+  if (!(await rateLimit(`forgot:email:${email.toLowerCase()}`, 3, 60 * 60_000)).ok) {
+    return { sent: true };
+  }
+
+  // EVERY account on this address, including donors who have never set a
+  // password. That inclusion is the whole fix: a donor who has given but has no
+  // password was previously filtered out here, so the one route that could have
+  // bootstrapped their portal access silently did nothing.
+  const candidates = await findCandidates(email);
+
+  if (candidates.length > 0) {
     try {
-      const { token } = await issueResetToken({
-        principal: candidate.kind,
-        principalId: candidate.id,
-        orgId: candidate.claims.orgId ?? null,
-      });
+      const links: { label: string; url: string }[] = [];
+
+      for (const c of candidates) {
+        // No password yet means this is a first-time setup, not a reset, so it
+        // gets the invite TTL — a donor reading their mail at the weekend needs
+        // more than an hour.
+        const purpose = c.passwordHash ? "reset" : "invite";
+        const { token } = await issueResetToken({
+          principal: c.kind,
+          principalId: c.id,
+          orgId: c.claims.orgId ?? null,
+          purpose,
+        });
+        links.push({
+          label: c.orgName
+            ? `${c.passwordHash ? "Reset password" : "Set up access"} · ${c.orgName}`
+            : c.passwordHash
+              ? "Choose a new password"
+              : "Set up access",
+          url: resetUrl(token),
+        });
+        await audit({
+          actor: { type: "system" },
+          orgId: c.claims.orgId ?? null,
+          action: purpose === "invite" ? "auth.portal_setup.requested" : "auth.password_reset.requested",
+          entityType: c.kind,
+          entityId: c.id,
+          ip: clientIp(),
+        });
+      }
+
+      const many = links.length > 1;
       await sendEmailWithRetry({
         to: email,
-        subject: "Reset your KindPath password",
+        subject: many ? "Your KindPath accounts" : "Set your KindPath password",
         html: emailLayout({
-          heading: "Reset your password",
-          body: `We received a request to reset the password for
-            <strong>${escapeHtml(email)}</strong>. This link expires in one hour and
-            can be used once. If you didn't ask for this, you can ignore this email —
-            your password won't change.`,
-          cta: { label: "Choose a new password", url: resetUrl(token) },
+          heading: many ? "Choose an account" : "Set your password",
+          body: many
+            ? `This email address is used by <strong>${links.length}</strong> accounts.
+               Pick the one you want to set a password for. Each link works once.
+               If you didn't ask for this, you can ignore this email — nothing changes.`
+            : `We received a request for <strong>${escapeHtml(email)}</strong>.
+               Use the link below to set your password. It works once.
+               If you didn't ask for this, you can ignore this email — nothing changes.`,
+          ctas: links,
         }),
-      });
-      await audit({
-        actor: { type: "system" },
-        orgId: candidate.claims.orgId ?? null,
-        action: "auth.password_reset.requested",
-        entityType: candidate.kind,
-        entityId: candidate.id,
-        ip: clientIp(),
       });
     } catch (e) {
       captureError(e, { source: "auth.requestPasswordReset" });
@@ -439,7 +466,12 @@ export async function resetPasswordAction(
           ? "That link has expired. Request a new one."
           : result.reason === "used"
             ? "That link has already been used. Request a new one."
-            : "That reset link isn't valid. Request a new one.",
+            : result.reason === "revoked"
+              ? // The account was erased or switched off after the link was sent.
+                // Say so plainly rather than sending them round for another link
+                // that will fail the same way.
+                "This account is no longer active, so the link can't be used. Please contact the organization."
+              : "That reset link isn't valid. Request a new one.",
     };
   }
 
@@ -454,6 +486,31 @@ export async function resetPasswordAction(
 
   // Deliberately do NOT sign them in — they prove the new password at /login.
   return { ok: true };
+}
+
+/**
+ * The stored hash for the signed-in principal, looked up by id.
+ *
+ * Kept separate from `findCandidates` on purpose: that resolves an EMAIL, which
+ * is ambiguous. Once there is a session there is no ambiguity, so identity comes
+ * from the session claims.
+ */
+async function currentPasswordHash(
+  kind: SessionClaims["kind"],
+  id: string
+): Promise<string | null> {
+  switch (kind) {
+    case "platform":
+      return (await adminDb.platformAdmin.findUnique({ where: { id } }))?.passwordHash ?? null;
+    case "org":
+      return (await adminDb.orgUser.findUnique({ where: { id } }))?.passwordHash ?? null;
+    case "volunteer":
+      return (await adminDb.volunteer.findUnique({ where: { id } }))?.passwordHash ?? null;
+    case "donor":
+      return (await adminDb.donor.findUnique({ where: { id } }))?.passwordHash ?? null;
+    default:
+      return null;
+  }
 }
 
 // ---------------- FORCED PASSWORD CHANGE (invited / admin-reset accounts) ----------------
@@ -489,9 +546,13 @@ export async function changePasswordAction(
   const parsed = changeSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0]?.message };
 
-  const candidate = await findCandidate(session.email);
-  if (!candidate || candidate.id !== session.sub) redirect("/login");
-  if (!(await verifyPassword(parsed.data.current, candidate.passwordHash))) {
+  // Resolve by the session's own identity, never by email. Because an address
+  // can belong to several accounts, `findCandidate(session.email)` could return a
+  // sibling row, fail the id check, and bounce a legitimately signed-in user to
+  // /login — permanently unable to change their password.
+  const currentHash = await currentPasswordHash(session.kind, session.sub);
+  if (!currentHash) redirect("/login");
+  if (!(await verifyPassword(parsed.data.current, currentHash))) {
     return { error: "That current password isn't right." };
   }
 

@@ -78,11 +78,21 @@ export async function queueReceiptEmail(
   const subject = args.official
     ? `Your tax receipt ${args.serialNumber} from ${args.orgName}`
     : `Your payment confirmation from ${args.orgName}`;
+  const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   const html = emailLayout({
     heading: `Thank you for your gift, ${escapeHtml(args.donorName.split(" ")[0] ?? "")}!`,
-    body: `Your ${args.official ? "official donation receipt" : "payment confirmation"} for
+    body:
+      `Your ${args.official ? "official donation receipt" : "payment confirmation"} for
       <strong>${formatCAD(args.eligibleAmount)}</strong> is ready.
-      Receipt number <strong>${escapeHtml(args.serialNumber)}</strong>.`,
+      Receipt number <strong>${escapeHtml(args.serialNumber)}</strong>.` +
+      // How a donor discovers the portal exists. Deliberately a plain link and
+      // NOT an embedded password-set token: mailing a live credential to every
+      // donor who has ever given would leave thousands of unsolicited
+      // account-takeover links sitting in inboxes. One extra click, no credential.
+      `<p style="margin-top:16px;font-size:13px;color:#64748b">
+        Want to see past receipts, manage a recurring gift or update your card?
+        <a href="${base}/claim" style="color:#4f46e5">Set up portal access</a>.
+      </p>`,
     cta: { label: "Download receipt (PDF)", url },
     brand: { orgName: args.orgName, brandColor: args.brandColor, logoUrl: args.logoUrl },
   });
@@ -123,8 +133,12 @@ export async function queueBillingFailureEmail(
       : `We couldn't process your recurring gift of <strong>${formatCAD(args.amount)}</strong>
          (attempt ${args.attempt}). We'll try again automatically. You can also update your payment method.`,
     cta: {
+      // Via /login rather than straight at /portal: a donor who has never set a
+      // password would otherwise be bounced by middleware into a login page with
+      // no way forward — which is precisely what made this email a dead end.
+      // `next` carries them to the right page once they are in.
       label: "Manage payment method",
-      url: `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/portal/payment-methods`,
+      url: `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/login?next=%2Fportal%2Frecurring`,
     },
     brand: { orgName: args.orgName, brandColor: args.brandColor, logoUrl: args.logoUrl },
   });

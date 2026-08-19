@@ -103,8 +103,13 @@ export async function setVolunteerStatus(volunteerId: string, status: "active" |
   await withTenant(session.orgId, (tx) =>
     tx.volunteer.update({ where: { id: volunteerId }, data: { status } })
   );
-  // Deactivation must take effect now, not whenever their 7-day session expires.
-  if (status === "inactive") await revokeSessions("volunteer", volunteerId);
+  // Deactivation must take effect now, not whenever their 7-day session expires,
+  // and an unused invite link would otherwise let them back in afterwards.
+  if (status === "inactive") {
+    await revokeSessions("volunteer", volunteerId);
+    const { invalidateTokensFor } = await import("@/lib/auth/password-reset");
+    await invalidateTokensFor("volunteer", volunteerId);
+  }
   await audit({
     actor: { type: "org_user", id: session.sub },
     orgId: session.orgId,

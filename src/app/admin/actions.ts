@@ -7,6 +7,7 @@ import { adminDb } from "@/lib/db";
 import { createSession } from "@/lib/auth/session";
 import { requirePlatformAdmin } from "@/lib/auth/guards";
 import { unusablePasswordHash, sendInvite } from "@/lib/auth/invite";
+import { invalidateTokensFor } from "@/lib/auth/password-reset";
 import { revokeSessions, revokeOrgSessions } from "@/lib/auth/revocation";
 import { planPrice, isPlanKey } from "@/lib/plans";
 import { audit as auditLog } from "@/lib/audit";
@@ -656,7 +657,10 @@ export async function adminSetOrgUserStatus(
 
   // Sessions are stateless JWTs valid for 7 days: without bumping tokenVersion a
   // disabled account keeps full access — including donor PII — for up to a week.
-  if (status === "disabled") await revokeSessions("org", userId);
+  if (status === "disabled") {
+    await revokeSessions("org", userId);
+    await invalidateTokensFor("org", userId);
+  }
 
   await auditLog({
     actor: { type: "platform_admin", id: admin.sub },

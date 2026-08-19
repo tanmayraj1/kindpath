@@ -27,8 +27,23 @@ export async function sendEmail({ to, subject, html }: SendInput): Promise<SendR
   const from = process.env.EMAIL_FROM ?? "KindPath <receipts@kindpath.app>";
 
   if (!apiKey) {
-    // Dev fallback — no provider configured.
-    console.log(`\n📧 [email:dev] to=${to}\n   subject=${subject}\n   (set RESEND_API_KEY to send for real)\n`);
+    // Dev fallback — no provider configured. Action links are echoed because
+    // invite, reset and portal-setup flows are otherwise untestable locally:
+    // the raw token exists ONLY in the email body by design, so without this
+    // there is no way to follow one without reading it out of the database.
+    // Guarded on NODE_ENV so a production misconfiguration can never print a
+    // live credential into a log aggregator.
+    const links =
+      process.env.NODE_ENV === "production"
+        ? []
+        : (html.match(/href="[^"]*\/(?:reset|verify)\?token=[^"]*"/g) ?? []).map((h) =>
+            h.slice(6, -1)
+          );
+    console.log(
+      `\n📧 [email:dev] to=${to}\n   subject=${subject}` +
+        links.map((u) => `\n   🔗 ${u}`).join("") +
+        `\n   (set RESEND_API_KEY to send for real)\n`
+    );
     return { ok: true, id: "dev-console", simulated: true };
   }
 
@@ -101,6 +116,12 @@ export function emailLayout(opts: {
   heading: string;
   body: string;
   cta?: { label: string; url: string };
+  /**
+   * Several actions in one email. Used where an address legitimately belongs to
+   * more than one account and each needs its own single-use link — one message
+   * with two buttons beats two near-identical messages arriving together.
+   */
+  ctas?: { label: string; url: string }[];
   brand?: EmailBrand;
 }) {
   const color = safeColor(opts.brand?.brandColor);
@@ -118,11 +139,12 @@ export function emailLayout(opts: {
     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:28px;border-top:4px solid ${color}">
       <h1 style="font-size:18px;margin:0 0 12px">${opts.heading}</h1>
       <div style="font-size:14px;line-height:1.6;color:#334155">${opts.body}</div>
-      ${
-        opts.cta
-          ? `<div style="margin-top:24px"><a href="${opts.cta.url}" style="display:inline-block;background:${color};color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-size:14px;font-weight:600">${opts.cta.label}</a></div>`
-          : ""
-      }
+      ${(opts.ctas ?? (opts.cta ? [opts.cta] : []))
+        .map(
+          (c, i) =>
+            `<div style="margin-top:${i === 0 ? 24 : 10}px"><a href="${c.url}" style="display:inline-block;background:${i === 0 ? color : "#fff"};color:${i === 0 ? "#fff" : color};border:1px solid ${color};text-decoration:none;padding:11px 20px;border-radius:8px;font-size:14px;font-weight:600">${c.label}</a></div>`
+        )
+        .join("")}
     </div>
     <p style="font-size:12px;color:#94a3b8;text-align:center;margin-top:16px">${footer}</p>
   </div></body></html>`;

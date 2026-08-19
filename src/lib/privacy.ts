@@ -2,6 +2,7 @@ import { adminDb } from "@/lib/db";
 import { withTenant } from "@/lib/tenant";
 import { audit } from "@/lib/audit";
 import { revokeSessions } from "@/lib/auth/revocation";
+import { invalidateTokensFor } from "@/lib/auth/password-reset";
 
 /**
  * Donor data rights under PIPEDA and Quebec's Law 25.
@@ -215,8 +216,12 @@ export async function anonymizeDonor(args: {
   if (!counts) return { error: "That donor record no longer exists." };
   if (counts.already) return { error: "That donor record has already been anonymized." };
 
-  // Any live session belongs to an identity that no longer exists.
+  // Any live session belongs to an identity that no longer exists — and any
+  // unused invite or reset link is a standing invitation to create a new one,
+  // so both are killed together. Without the second, an erasure could be undone
+  // by a link sitting in an inbox from before the request.
   await revokeSessions("donor", donorId);
+  await invalidateTokensFor("donor", donorId);
 
   await audit({
     actor: { type: args.requestedBy.type, id: args.requestedBy.id },

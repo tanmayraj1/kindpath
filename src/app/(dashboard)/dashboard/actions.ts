@@ -148,8 +148,13 @@ export async function setTeamMemberStatus(
   });
   if (!updated) return { error: "That team member no longer exists." };
 
-  // Disabling must take effect immediately — this account can read donor PII.
-  if (status === "disabled") await revokeSessions("org", userId);
+  // Disabling must take effect immediately — this account can read donor PII —
+  // and an unused password link would let them straight back in.
+  if (status === "disabled") {
+    await revokeSessions("org", userId);
+    const { invalidateTokensFor } = await import("@/lib/auth/password-reset");
+    await invalidateTokensFor("org", userId);
+  }
   await audit({
     actor: { type: "org_user", id: session.sub },
     orgId: session.orgId,
@@ -1601,4 +1606,77 @@ export async function resendFailedMessage(notificationId: string): Promise<Mutat
   return sent
     ? { ok: true }
     : { error: "It failed again. Check the donor's email address on their record, then try once more." };
+}
+
+// ---------------- donor portal access ----------------
+/**
+ * Email a donor a link to set up their giving portal.
+ *
+ * Donors reach the portal on their own through the link in every receipt email,
+ * but support needs this for the case that link never arrived — a typo in the
+ * address, a spam filter, or a donor added by staff who never received a receipt.
+ *
+ * Deliberately does NOT overwrite an existing password. An org admin sending an
+ * invite to a donor who already has portal access should not silently lock them
+ * out of it; that donor gets an ordinary reset link instead.
+ */
+export async function sendDonorPortalInvite(donorId: string): Promise<TeamState> {
+  const session = await requireOrgUser();
+
+  if (!(await rateLimit(`portal-invite:${session.orgId}`, 20, 60 * 60_000)).ok) {
+    return { error: "Too many invites sent. Please try again later." };
+  }
+  if (!(await rateLimit(`portal-invite:donor:${donorId}`, 3, 60 * 60_000)).ok) {
+    return { error: "That donor has been sent several links recently. Please wait an hour." };
+  }
+
+  const ctx = await withTenant(session.orgId, async (tx) => {
+    const donor = await tx.donor.findFirst({ where: { id: donorId } });
+    if (!donor) return null;
+    const org = await tx.organization.findUnique({ where: { id: session.orgId } });
+    return { donor, org };
+  });
+  if (!ctx?.org) return { error: "That donor no longer exists." };
+  if (ctx.donor.anonymizedAt) {
+    return { error: "This donor asked to be removed, so we can't send them a link." };
+  }
+
+  const hadPassword = ctx.donor.passwordHash != null;
+
+  // A donor row exists from the moment they give, but with no password. Give it
+  // an unusable one so the account is real and lockout bookkeeping has somewhere
+  // to live; the link is the only way to turn it into something signable-in.
+  if (!hadPassword) {
+    const placeholder = await unusablePasswordHash();
+    await withTenant(session.orgId, (tx) =>
+      tx.donor.update({
+        where: { id: donorId },
+        data: { passwordHash: placeholder, mustChangePassword: true },
+      })
+    );
+  }
+
+  const invite = await sendInvite({
+    principal: "donor",
+    principalId: donorId,
+    orgId: session.orgId,
+    email: ctx.donor.email,
+    name: `${ctx.donor.firstName} ${ctx.donor.lastName}`,
+    orgName: ctx.org.name,
+    brandColor: ctx.org.primaryColor,
+    logoUrl: ctx.org.logoUrl,
+    purpose: hadPassword ? "reset" : "invite",
+  });
+
+  await audit({
+    actor: { type: "org_user", id: session.sub },
+    orgId: session.orgId,
+    action: "donor.portal_invited",
+    entityType: "donor",
+    entityId: donorId,
+    after: { hadPassword },
+  });
+
+  revalidatePath(`/dashboard/donors/${donorId}`);
+  return { ok: true, inviteUrl: invite.url, emailed: invite.emailed };
 }

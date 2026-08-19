@@ -10,8 +10,9 @@ import { SubmitButton } from "./submit-button";
 
 const initial: AuthState & { sent?: boolean } = {};
 
-export function ForgotForm() {
+export function ForgotForm({ mode = "reset" }: { mode?: "reset" | "claim" }) {
   const [state, formAction] = useFormState(requestPasswordReset, initial);
+  const back = mode === "claim" ? "/claim" : "/forgot";
 
   // Deliberately the same confirmation whether or not the address has an
   // account — the form must not reveal who is registered on the platform.
@@ -19,11 +20,14 @@ export function ForgotForm() {
     return (
       <div className="flex flex-col gap-4">
         <FormAlert variant="success">
-          If an account exists for that address, we&apos;ve sent a reset link. It expires in one hour.
+          {/* Deliberately vague about the expiry: a first-time setup link lives
+              seven days and a reset lives one hour, and saying which would
+              disclose whether the address already has a password. */}
+          If we have that address on file, we&apos;ve sent a link. It can be used once.
         </FormAlert>
         <p className="text-sm text-muted-foreground">
           Didn&apos;t get it? Check your spam folder, or{" "}
-          <Link href="/forgot" className="font-medium text-brand-600 hover:underline">
+          <Link href={back} className="font-medium text-brand-600 hover:underline">
             try again
           </Link>
           .

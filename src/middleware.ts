@@ -1,15 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { verifySession } from "@/lib/auth/jwt";
+import { PORTAL_HOME, type PrincipalKind } from "@/lib/auth/portals";
 
 const COOKIE = process.env.AUTH_COOKIE ?? "kindpath_session";
 
-// path prefix -> required principal kind
-const guarded: { prefix: string; kind: "platform" | "org" | "donor" | "volunteer" }[] = [
-  { prefix: "/admin", kind: "platform" },
-  { prefix: "/dashboard", kind: "org" },
-  { prefix: "/portal", kind: "donor" },
-  { prefix: "/volunteer", kind: "volunteer" },
-];
+// Derived from the single source of truth so a new portal can't be added to one
+// and forgotten in the other.
+const guarded: { prefix: string; kind: PrincipalKind }[] = (
+  Object.entries(PORTAL_HOME) as [PrincipalKind, string][]
+).map(([kind, prefix]) => ({ prefix, kind }));
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -22,22 +21,17 @@ export async function middleware(req: NextRequest) {
   if (!session) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";
-    url.searchParams.set("next", pathname);
+    // Include the query string: without it a filtered list or a paged view comes
+    // back as its bare path after sign-in.
+    url.searchParams.set("next", pathname + req.nextUrl.search);
     return NextResponse.redirect(url);
   }
 
   if (session.kind !== rule.kind) {
     // logged in but wrong portal — send to their own
-    const home =
-      session.kind === "platform"
-        ? "/admin"
-        : session.kind === "org"
-          ? "/dashboard"
-          : session.kind === "volunteer"
-            ? "/volunteer"
-            : "/portal";
     const url = req.nextUrl.clone();
-    url.pathname = home;
+    url.pathname = PORTAL_HOME[session.kind];
+    url.search = "";
     return NextResponse.redirect(url);
   }
 

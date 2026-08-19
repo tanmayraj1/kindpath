@@ -10,11 +10,14 @@ import { SubmitButton } from "./submit-button";
 
 const initial: AuthState = {};
 
-export function LoginForm() {
+export function LoginForm({ next }: { next?: string }) {
   const [state, formAction] = useFormState(loginAction, initial);
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
+      {/* Carried so a deep link survives sign-in. Attacker-controllable, so it is
+          validated server-side by safeNext — never trusted from here. */}
+      {next && <input type="hidden" name="next" value={next} />}
       <FormAlert>{state.error}</FormAlert>
       <div className="flex flex-col gap-2">
         <Label htmlFor="email">Email</Label>
@@ -22,7 +25,7 @@ export function LoginForm() {
           id="email"
           name="email"
           type="email"
-          placeholder="you@organization.org"
+          placeholder="you@example.com"
           autoComplete="email"
           aria-invalid={!!state.error}
           required
