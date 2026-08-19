@@ -6,6 +6,12 @@ import { requireCronAuth } from "@/lib/cron-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+/**
+ * Both crons do real work per row — a gateway charge and an email each — so the
+ * platform default (10s) kills them partway, leaving the heartbeat row stuck at
+ * "running". The work itself is bounded to stay comfortably inside this.
+ */
+export const maxDuration = 60;
 
 /**
  * Trigger a recurring-billing run. Protect with CRON_SECRET via either:

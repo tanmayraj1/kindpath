@@ -97,6 +97,20 @@ jobs:
       - name: Apply migrations
         run: npx prisma migrate deploy
 
+      # A field added to schema.prisma WITHOUT a migration previously passed
+      # everything: `prisma generate` builds the client from the schema, and
+      # `migrate deploy` applies the migrations folder — the two are never
+      # compared. Typecheck and build both pass because the generated client has
+      # the field; only production discovers the column doesn't exist.
+      - name: Verify no schema drift
+        run: |
+          npx prisma migrate diff \
+            --from-url "$DATABASE_URL" \
+            --to-schema-datamodel prisma/schema.prisma \
+            --exit-code
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/kindpath_ci
+
       - name: Apply row-level security policies
         run: npx prisma db execute --file prisma/sql/rls.sql --schema prisma/schema.prisma
 

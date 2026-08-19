@@ -185,10 +185,29 @@ export type BillingSummary = {
   receiptsIssued: number;
   /** Plans that threw (gateway down, bad data). Reported, not swallowed. */
   errored: number;
+  /** True when the run stopped at a limit with plans still due. */
+  incomplete: boolean;
 };
 
 /** Plans handled per batch. Bounds memory and keeps each cron slice short. */
 const BILLING_BATCH_SIZE = 50;
+
+/**
+ * Limits on ONE invocation.
+ *
+ * This loop was unbounded: it walked every due plan, charging a gateway,
+ * issuing a receipt and sending an email for each, with no cap and no time
+ * budget. On a serverless platform a few dozen plans exceed the function
+ * timeout, and the process is killed mid-loop — which also means finishJobRun
+ * never executes, so the heartbeat row stays "running" forever and /api/health
+ * goes red while the real damage is simply that the charges did not happen.
+ *
+ * Stopping early is safe and self-advancing: settling a plan moves it out of the
+ * due set, so the next run picks up exactly what is left. `drainPendingCampaigns`
+ * already works this way — this brings billing in line with it.
+ */
+const MAX_PLANS_PER_RUN = 400;
+const TIME_BUDGET_MS = 45_000;
 
 /**
  * Process all recurring plans due for billing. Idempotent across runs because a
@@ -207,6 +226,7 @@ export async function runBilling(now = new Date()): Promise<BillingSummary> {
     suspended: 0,
     receiptsIssued: 0,
     errored: 0,
+    incomplete: false,
   };
 
   const where = { status: "active" as const, nextBillingDate: { lte: now } };
@@ -217,12 +237,21 @@ export async function runBilling(now = new Date()): Promise<BillingSummary> {
   // Instead always take the head of the set and track ids we've already handled —
   // that also stops a plan that *threw* (and so stayed due) from looping forever.
   const handled = new Set<string>();
+  const deadline = Date.now() + TIME_BUDGET_MS;
   for (;;) {
+    if (handled.size >= MAX_PLANS_PER_RUN || Date.now() > deadline) {
+      summary.incomplete = true;
+      break;
+    }
     const batch = await loadDuePlans(where, { take: BILLING_BATCH_SIZE });
     const pending = batch.filter((p) => !handled.has(p.id));
     if (pending.length === 0) break;
 
     for (const plan of pending) {
+      if (handled.size >= MAX_PLANS_PER_RUN || Date.now() > deadline) {
+        summary.incomplete = true;
+        break;
+      }
       handled.add(plan.id);
       try {
         const outcome = await settleDuePlan(plan, now);
@@ -240,7 +269,9 @@ export async function runBilling(now = new Date()): Promise<BillingSummary> {
     }
   }
 
-  log("info", "billing run complete", { ...summary });
+  // Never silent about a partial run: "charged 400 of 900" must be visible, not
+  // inferred from a count that happens to look low.
+  log(summary.incomplete ? "warn" : "info", "billing run complete", { ...summary });
   return summary;
 }
 

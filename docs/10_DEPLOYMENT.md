@@ -72,12 +72,40 @@ Do **not** run `npm run db:seed` in production (that's demo data).
 | `RESEND_API_KEY` | from Resend |
 | `EMAIL_FROM` | `KindPath <receipts@yourdomain.com>` |
 | `CONTACT_TO` | where demo requests go, e.g. `sales@yourdomain.com` |
-| `PAYMENT_PROVIDER` | `mock` for now → your adapter key later |
+| `PAYMENT_PROVIDER` | **`stripe` or `wevend`** — see the warning below |
 | `CRON_SECRET` | a random secret (Vercel cron sends it automatically) |
+| `CREDENTIALS_KEY` | **required.** Encrypts each org's gateway credentials |
+| `UPSTASH_REDIS_REST_URL` | **required on Vercel** — see the warning below |
+| `UPSTASH_REDIS_REST_TOKEN` | **required on Vercel** |
+| `SENTRY_DSN` | optional; without it errors are console-logged only |
+| `KINDPATH_GST_NUMBER` | your GST/HST number, printed on KindPath's own invoices |
+| `BILLING_CONTACT_EMAIL` | where customers ask about an invoice |
 
 > Generate secrets: `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`
 
-The build runs `prisma generate && next build` (already configured). `next start` is handled by Vercel.
+> ⚠️ **`PAYMENT_PROVIDER` must not be `mock`.** `src/lib/env.ts` refuses to boot
+> in production with `mock`, `mock-hosted`, or unset — the simulated gateway's
+> webhook verifier accepts unsigned JSON, which would make `/api/webhooks/pos` an
+> unauthenticated way to void a charity's official tax receipts. The build still
+> succeeds (env validation is deliberately downgraded during the build so CI needs
+> no secrets), so a wrong value surfaces as a 500 on the first real request.
+
+> ⚠️ **`CREDENTIALS_KEY` is not optional in production**, despite what
+> `.env.example` used to imply. It falls back to `AUTH_SECRET`, which couples
+> every org's gateway-credential decryption to session signing: rotating
+> `AUTH_SECRET` would then destroy every org's stored merchant credentials.
+
+> ⚠️ **Set the Upstash pair.** Without them the rate limiter falls back to an
+> in-memory `Map`, and on Vercel every concurrent lambda has its own — so the
+> effective login limit becomes 10/min × instance count, and brute-force
+> protection is essentially absent. This applies to login, 2FA, forgot-password,
+> donation charges and the webhook endpoint.
+
+The build runs `vercel-build`, which applies migrations and RLS policies before
+building. This is deliberate: the previous documented order was `git push` (which
+auto-deploys) and *then* `npm run db:deploy` by hand, i.e. it shipped code ahead
+of its own schema. A missing `ADMIN_DATABASE_URL` now fails the deploy instead of
+producing a running site against a stale database.
 
 ## 6. Recurring-billing cron
 `vercel.json` already declares a daily job hitting `/api/cron/billing`. Vercel automatically sends

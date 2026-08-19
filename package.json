@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
+    "//vercel-build": "Vercel prefers this over `build`. Migrations and RLS run HERE, not in `build`, because CI builds without a database and must stay that way. The documented deploy order was `git push` (which auto-deploys) and THEN `npm run db:deploy` from a laptop — i.e. it shipped code ahead of its own schema. This makes that impossible: the deploy fails rather than serving a stale schema. rls.sql is idempotent and derives tenant tables from the catalog, so it is safe on every build and picks up new tables automatically.",
+    "vercel-build": "prisma generate && npm run db:migrate:deploy && npm run db:rls && next build",
     "start": "next start",
     "lint": "next lint",
     "postinstall": "prisma generate",
