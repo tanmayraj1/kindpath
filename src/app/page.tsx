@@ -3,6 +3,7 @@ import { SiteFooter } from "@/components/marketing/site-footer";
 import { Hero } from "@/components/marketing/hero";
 import { TrustStrip } from "@/components/marketing/trust-strip";
 import { Showcase } from "@/components/marketing/showcase";
+import { UseCases } from "@/components/marketing/use-cases";
 import { Journey } from "@/components/marketing/journey";
 import { StatsBand } from "@/components/marketing/stats-band";
 import { Features } from "@/components/marketing/features";
@@ -34,6 +35,7 @@ export default function HomePage() {
         <Hero />
         <TrustStrip />
         <Showcase />
+        <UseCases />
         <Journey />
         <StatsBand />
         <Features />

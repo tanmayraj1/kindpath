@@ -247,6 +247,13 @@
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
+      /* Delay must be zeroed too, not just duration. The staggered entrances
+         carry delays up to ~1s and use fill-mode `both`, so collapsing only the
+         duration left a reduced-motion visitor staring at opacity:0 for the
+         whole delay before the content snapped in — the animation was gone but
+         the wait for it was not. */
+      animation-delay: 0ms !important;
+      transition-delay: 0ms !important;
     }
   }
 }

@@ -12,7 +12,7 @@ export function Table({ className, ...props }: React.TableHTMLAttributes<HTMLTab
 export function Thead({ children }: { children: React.ReactNode }) {
   return (
     <thead>
-      <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
+      <tr className="border-b border-border text-left text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
         {children}
       </tr>
     </thead>
@@ -29,7 +29,7 @@ export function Tr({ className, ...props }: React.HTMLAttributes<HTMLTableRowEle
       className={cn(
         // The hover tint is a scanning aid on wide tables, not decoration: it
         // keeps the eye on one row across eight columns.
-        "border-b border-border/60 transition-colors last:border-0 hover:bg-secondary/50",
+        "border-b border-border/50 transition-colors last:border-0 hover:bg-secondary/60",
         className
       )}
       {...props}
@@ -39,5 +39,5 @@ export function Tr({ className, ...props }: React.HTMLAttributes<HTMLTableRowEle
 
 export function Td({ className, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) {
   // tabular-nums so amount and date columns don't wobble between rows.
-  return <td className={cn("tnum py-3.5", className)} {...props} />;
+  return <td className={cn("tnum py-4", className)} {...props} />;
 }
