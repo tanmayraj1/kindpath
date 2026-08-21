@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Sparkline } from "@/components/ui/sparkline";
 import { requireDonor } from "@/lib/auth/guards";
 import { getDonorOverview } from "@/lib/queries/donor";
 import { formatCAD } from "@/lib/utils";
@@ -68,21 +69,55 @@ export default async function PortalOverview() {
           </Link>
         )}
 
+        {/* CSS stagger, matching the org dashboard. Not scroll-triggered: these
+            are the first thing on the page and a donor's own totals must not be
+            gated behind requestAnimationFrame having run. */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {stats.map((s) => (
-            <Card key={s.label}>
-              <CardContent className="flex flex-col gap-3 p-5">
+          {stats.map((s, i) => (
+            <Card
+              key={s.label}
+              className="h-full motion-safe:animate-rise-in"
+              style={{ animationDelay: `${i * 70}ms` }}
+            >
+              <CardContent className="flex h-full flex-col gap-3 p-5">
                 <span className="grid size-9 place-items-center rounded-lg bg-brand-50 text-brand-600">
-                  <s.icon className="size-[18px]" />
+                  <s.icon className="size-[18px]" aria-hidden />
                 </span>
                 <div>
-                  <p className="font-display text-2xl font-bold">{s.value}</p>
+                  <p className="tnum font-display text-2xl font-bold">{s.value}</p>
                   <p className="text-sm text-muted-foreground">{s.label}</p>
                 </div>
               </CardContent>
             </Card>
           ))}
         </div>
+
+        {/* Only worth drawing once there is more than one year with anything in
+            it — a single bar's worth of history is not a trend, and a line
+            through one point invites a donor to read meaning into noise. */}
+        {data.yearly.filter((y) => y.total > 0).length > 1 && (
+          <Card className="motion-safe:animate-rise-in" style={{ animationDelay: "300ms" }}>
+            <CardHeader className="flex-row items-baseline justify-between">
+              <CardTitle>Your giving over time</CardTitle>
+              <span className="text-xs text-muted-foreground">
+                {data.yearly[0].year}–{data.yearly[data.yearly.length - 1].year}
+              </span>
+            </CardHeader>
+            <CardContent>
+              <Sparkline data={data.yearly.map((y) => y.total)} height={56} />
+              <div className="mt-2 flex justify-between">
+                {data.yearly.map((y) => (
+                  <div key={y.year} className="text-center">
+                    <p className="tnum text-xs font-semibold">
+                      {formatCAD(y.total, { maximumFractionDigits: 0 })}
+                    </p>
+                    <p className="tnum text-[11px] text-muted-foreground">{y.year}</p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader className="flex-row items-center justify-between">

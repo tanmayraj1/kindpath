@@ -7,7 +7,11 @@ function startOfYear() {
 export function getDonorOverview(orgId: string, donorId: string) {
   return withTenant(orgId, async (tx) => {
     const yearStart = startOfYear();
-    const [org, donor, lifetime, thisYear, plans, recent] = await Promise.all([
+    // Five years of this donor's own giving, one row per year. Small enough to
+    // be free and it answers the question a donor actually has on this page —
+    // "am I giving more or less than I used to" — which the two totals above
+    // can't. Scoped to donorId, so it stays an index lookup rather than a scan.
+    const [org, donor, lifetime, thisYear, plans, recent, byYear] = await Promise.all([
       tx.organization.findUnique({ where: { id: orgId } }),
       tx.donor.findUnique({ where: { id: donorId } }),
       tx.donation.aggregate({
@@ -28,7 +32,24 @@ export function getDonorOverview(orgId: string, donorId: string) {
         take: 5,
         include: { fund: true, receipt: true },
       }),
+      tx.$queryRaw<{ yr: number; total: number }[]>`
+        SELECT EXTRACT(YEAR FROM received_at)::int AS yr,
+               SUM(eligible_amount)::float8        AS total
+        FROM donations
+        WHERE donor_id = ${donorId} AND status = 'succeeded'
+        GROUP BY 1
+        ORDER BY 1
+      `,
     ]);
+
+    // Backfill the years in between, so a lapsed year reads as a dip rather than
+    // being closed up — the gap is the part worth seeing.
+    const thisYearNum = new Date().getFullYear();
+    const totalsByYear = new Map(byYear.map((r) => [Number(r.yr), Number(r.total)]));
+    const yearly: { year: number; total: number }[] = [];
+    for (let y = thisYearNum - 4; y <= thisYearNum; y++) {
+      yearly.push({ year: y, total: totalsByYear.get(y) ?? 0 });
+    }
     // A plan needs attention when it's been suspended or has a pending retry.
     const attention = plans.filter(
       (p) => p.status === "suspended" || (p.status === "active" && p.retryCount > 0)
@@ -37,6 +58,7 @@ export function getDonorOverview(orgId: string, donorId: string) {
       orgName: org?.name ?? "your organization",
       registered: org?.charityStatus === "registered",
       donorName: donor ? `${donor.firstName} ${donor.lastName}` : "",
+      yearly,
       lifetime: Number(lifetime._sum.eligibleAmount ?? 0),
       thisYear: Number(thisYear._sum.eligibleAmount ?? 0),
       activePlans: plans.filter((p) => p.status === "active").length,
