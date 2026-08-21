@@ -16,6 +16,10 @@ import { cn } from "@/lib/utils";
  * equivalent is `pathLength="1"` plus a dashoffset animation, which also means
  * this ships no JavaScript at all.
  *
+ * Draws in currentColor rather than a fixed brand token, so a card can set the
+ * colour it needs — the line is teal on white and near-black on the lime hero
+ * card, where a brand-coloured stroke is effectively invisible.
+ *
  * A flat series — a new organization, or a genuinely quiet quarter — would
  * divide by a zero range and collapse every point onto one edge, so it is pinned
  * to the middle instead: a straight line through the centre, which is the honest
@@ -61,20 +65,20 @@ export function Sparkline({
       aria-hidden
       viewBox={`0 0 ${W} ${H}`}
       preserveAspectRatio="none"
-      className={cn("w-full", className)}
+      className={cn("w-full text-brand-600", className)}
       style={{ height }}
     >
       <defs>
         <linearGradient id={`${uid}-f`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="hsl(var(--brand-500))" stopOpacity="0.22" />
-          <stop offset="100%" stopColor="hsl(var(--brand-500))" stopOpacity="0" />
+          <stop offset="0%" stopColor="currentColor" stopOpacity="0.20" />
+          <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
         </linearGradient>
       </defs>
       <path d={area} fill={`url(#${uid}-f)`} className="motion-safe:animate-fade-in-up" />
       <path
         d={line}
         fill="none"
-        stroke="hsl(var(--brand-600))"
+        stroke="currentColor"
         strokeWidth={strokeWidth}
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -90,7 +94,7 @@ export function Sparkline({
         cx={last[0]}
         cy={last[1]}
         r={strokeWidth}
-        fill="hsl(var(--brand-600))"
+        fill="currentColor"
         vectorEffect="non-scaling-stroke"
       />
     </svg>

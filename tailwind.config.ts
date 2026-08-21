@@ -71,6 +71,13 @@ const config: Config = {
           DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
         },
+        // Surface-independent palette members. lime is the dashboard hero-metric
+        // fill and ink the near-black text/primary — both referenced directly
+        // rather than through a semantic token because they mean exactly one
+        // thing wherever they appear.
+        lime: "hsl(var(--lime))",
+        ink: "hsl(var(--ink))",
+        periwinkle: "hsl(var(--periwinkle))",
         card: {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",

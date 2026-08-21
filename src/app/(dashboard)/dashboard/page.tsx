@@ -11,6 +11,7 @@ import { Topbar } from "@/components/dashboard/topbar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Sparkline } from "@/components/ui/sparkline";
+import { StatCard } from "@/components/dashboard/stat-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { buttonVariants } from "@/components/ui/button";
 import { cn, formatCAD } from "@/lib/utils";
@@ -61,19 +62,24 @@ export default async function DashboardPage() {
     /** Weekly totals — only the money card gets one; a count of donors has no
         meaningful weekly shape, and a line under every number is decoration. */
     series?: number[];
+    href?: string;
+    /** Lime treatment. Exactly one card per row may set this — see StatCard. */
+    hero?: boolean;
   }[] = [
     {
       label: "Raised this month",
       value: formatCAD(data.stats.raisedThisMonth),
       icon: TrendingUp,
       series: data.trend,
+      href: "/dashboard/reports",
+      hero: true,
       ...(deltaPct !== null
         ? { delta: { pct: deltaPct, label: "vs this time last month" } }
         : {}),
     },
-    { label: "Active recurring donors", value: String(data.stats.activeRecurring), icon: Repeat },
-    { label: "Total donors", value: String(data.stats.totalDonors), icon: Users },
-    { label: "Receipts issued", value: String(data.stats.receiptsIssued), icon: FileCheck2 },
+    { label: "Active recurring donors", value: String(data.stats.activeRecurring), icon: Repeat, href: "/dashboard/recurring" },
+    { label: "Total donors", value: String(data.stats.totalDonors), icon: Users, href: "/dashboard/donors" },
+    { label: "Receipts issued", value: String(data.stats.receiptsIssued), icon: FileCheck2, href: "/dashboard/receipts" },
   ];
 
   return (
@@ -143,50 +149,32 @@ export default async function DashboardPage() {
             should never need JS to have run to be readable. */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {stats.map((stat, i) => (
-            <Card
+            <StatCard
               key={stat.label}
-              className="h-full motion-safe:animate-rise-in"
+              label={stat.label}
+              value={stat.value}
+              icon={stat.icon}
+              href={stat.href}
+              hero={stat.hero}
+              caption={stat.delta?.label}
+              badge={
+                stat.delta
+                  ? {
+                      text: `${stat.delta.pct >= 0 ? "+" : ""}${stat.delta.pct}%`,
+                      tone: stat.delta.pct >= 0 ? "success" : "destructive",
+                    }
+                  : undefined
+              }
+              className="motion-safe:animate-rise-in"
               style={{ animationDelay: `${i * 70}ms` }}
             >
-              <CardContent className="flex h-full flex-col gap-3 p-5">
-                {/* Reserve two lines for the label. These cards sit in one grid
-                    row, so a label that wraps ("Active recurring donors" does at
-                    lg) pushed only that card's number down and broke the baseline
-                    the four values are read across. */}
-                <div className="flex min-h-10 items-start justify-between gap-2">
-                  <p className="text-sm font-medium leading-5 text-muted-foreground">{stat.label}</p>
-                  <span className="grid size-8 place-items-center rounded-lg bg-brand-50 text-brand-600">
-                    <stat.icon className="size-4" aria-hidden />
-                  </span>
-                </div>
-                <div className="flex flex-wrap items-baseline gap-2">
-                  <p className="tnum font-display text-2xl font-bold tracking-tight">{stat.value}</p>
-                  {stat.delta && (
-                    <span
-                      className={cn(
-                        "tnum rounded-full px-1.5 py-0.5 text-xs font-semibold",
-                        stat.delta.pct >= 0
-                          ? "bg-success/10 text-success"
-                          : "bg-destructive/10 text-destructive"
-                      )}
-                      title={stat.delta.label}
-                    >
-                      {stat.delta.pct >= 0 ? "+" : ""}
-                      {stat.delta.pct}%
-                    </span>
-                  )}
-                </div>
-                {stat.delta && (
-                  <p className="-mt-2 text-xs text-muted-foreground">{stat.delta.label}</p>
-                )}
-                {stat.series && stat.series.some((n) => n > 0) && (
-                  <div className="mt-auto pt-2">
-                    <Sparkline data={stat.series} height={30} />
-                    <p className="mt-1 text-[11px] text-muted-foreground">Last 12 weeks</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+              {stat.series && stat.series.some((n) => n > 0) && (
+                <>
+                  <Sparkline data={stat.series} height={30} className={stat.hero ? "text-ink" : undefined} />
+                  <p className={cn("mt-1 text-[11px]", stat.hero ? "text-ink/60" : "text-muted-foreground")}>Last 12 weeks</p>
+                </>
+              )}
+            </StatCard>
           ))}
         </div>
 

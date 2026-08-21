@@ -48,9 +48,9 @@ function NavLinks({
             tabIndex={hidden ? -1 : undefined}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+              "group relative flex items-center gap-3 rounded-full px-3.5 py-2.5 text-sm font-medium transition-colors",
               active
-                ? "bg-brand-50 text-brand-700"
+                ? "bg-brand-100 text-brand-800"
                 : "text-muted-foreground hover:bg-secondary hover:text-foreground"
             )}
           >
@@ -59,13 +59,13 @@ function NavLinks({
             <span
               aria-hidden
               className={cn(
-                "absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-brand-600 transition-all",
+                "absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-full bg-brand-600 transition-all",
                 active ? "opacity-100" : "opacity-0 group-hover:opacity-30"
               )}
             />
             <item.icon
               className={cn(
-                "size-[18px] shrink-0 transition-colors",
+                "size-[18px] shrink-0 stroke-[1.5] transition-colors",
                 active ? "text-brand-600" : "text-muted-foreground/70 group-hover:text-foreground"
               )}
             />
@@ -150,7 +150,7 @@ export function AppShell({
 
   return (
     <MobileNavContext.Provider value={{ open: () => setOpen(true) }}>
-      <div className="flex min-h-screen bg-secondary/30">
+      <div className="flex min-h-screen gap-0 bg-background p-0 lg:gap-5 lg:p-5">
         {/* ⌘K navigation. Built from the same `items` list as the sidebar, so a
             page added to the nav is reachable here without a second registry. */}
         <CommandPalette items={items} base={base} />
@@ -165,14 +165,18 @@ export function AppShell({
         </a>
 
         {/* desktop sidebar */}
-        <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-card lg:flex">
-          <div className="flex h-16 items-center border-b border-border px-6">
+        {/* Floating panel rather than a full-height rail: the canvas ground shows
+            around it, which is what separates "an app with a sidebar" from "a
+            surface with panels on it". Sticky so it stays put on long tables
+            without the main column having to own the scroll. */}
+        <aside className="sticky top-5 hidden h-[calc(100vh-2.5rem)] w-64 shrink-0 flex-col rounded-card bg-card shadow-soft lg:flex">
+          <div className="flex h-16 items-center px-6">
             <Link href={homeHref} aria-label="KindPath">
               <Logo />
             </Link>
           </div>
           <NavLinks items={items} base={base} />
-          {footer && <div className="border-t border-border p-3">{footer}</div>}
+          {footer && <div className="p-3">{footer}</div>}
         </aside>
 
         {/* mobile drawer + backdrop */}
@@ -226,7 +230,12 @@ export function AppShell({
           {footer && <div className="border-t border-border p-3">{footer}</div>}
         </aside>
 
-        <div className="flex min-w-0 flex-1 flex-col">{children}</div>
+        {/* Deliberately NOT a white panel. Canvas has to show through here, or the
+            white stat cards sit white-on-white and the shadow is doing all the
+            separating — which is exactly what a whisper-soft shadow cannot do. */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          {children}
+        </div>
       </div>
     </MobileNavContext.Provider>
   );
