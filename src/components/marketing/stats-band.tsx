@@ -55,28 +55,53 @@ const stats = [
 
 export function StatsBand() {
   return (
-    <section className="relative overflow-hidden border-y border-border bg-secondary/30 py-16">
-      <FlowLines className="opacity-[0.5]" lines={4} />
+    // Proof section: dark on mint. The reference floats these over a photograph;
+    // there is no photograph of this product in use because there are no users
+    // yet, and a stock image of a congregation would imply one. The ink panel
+    // does the same job — it separates the claim from the page and gives the
+    // chips something to sit on — without asserting anything untrue.
+    <section className="relative overflow-hidden bg-secondary/60 py-16 sm:py-24">
+      <div className="container">
+        <div className="relative overflow-hidden rounded-card bg-ink px-6 py-14 sm:px-12">
+          <FlowLines className="opacity-30" lines={4} />
 
-      <Stagger className="container relative grid gap-8 sm:grid-cols-2 lg:grid-cols-4" step={0.1}>
-        {stats.map((s) => (
-          <StaggerItem key={s.label} className="text-center sm:text-left">
-            <span className="mb-4 inline-grid size-11 place-items-center rounded-xl border border-border bg-card text-brand-600 shadow-sm">
-              <s.icon className="size-5" aria-hidden />
-            </span>
-            <p className="font-display text-4xl font-extrabold tracking-tight">
-              <Counter
-                to={s.value}
-                prefix={s.prefix ?? ""}
-                suffix={s.suffix ?? ""}
-                duration={1.4}
-              />
+          <div className="relative mx-auto max-w-2xl text-center">
+            <h2 className="font-display text-3xl font-bold tracking-tight text-paper sm:text-4xl">
+              See how KindPath transforms giving
+            </h2>
+            <p className="mt-4 text-lg leading-relaxed text-paper/60">
+              Not a pitch — four properties of the software you can check yourself.
             </p>
-            <p className="mt-1 text-sm font-semibold">{s.label}</p>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{s.detail}</p>
-          </StaggerItem>
-        ))}
-      </Stagger>
+          </div>
+
+          <Stagger
+            className="relative mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+            step={0.1}
+          >
+            {stats.map((s) => (
+              <StaggerItem key={s.label}>
+                <div className="flex h-full flex-col gap-3 rounded-card bg-paper/[0.06] p-5 backdrop-blur">
+                  <span className="inline-grid size-11 place-items-center rounded-full bg-paper/10 text-lime">
+                    <s.icon className="size-5 stroke-[1.5]" aria-hidden />
+                  </span>
+                  <p className="font-display text-4xl font-extrabold tracking-tight text-paper">
+                    <Counter
+                      to={s.value}
+                      prefix={s.prefix ?? ""}
+                      suffix={s.suffix ?? ""}
+                      duration={1.4}
+                    />
+                  </p>
+                  <div>
+                    <p className="text-sm font-semibold text-paper">{s.label}</p>
+                    <p className="mt-1 text-xs leading-relaxed text-paper/55">{s.detail}</p>
+                  </div>
+                </div>
+              </StaggerItem>
+            ))}
+          </Stagger>
+        </div>
+      </div>
     </section>
   );
 }

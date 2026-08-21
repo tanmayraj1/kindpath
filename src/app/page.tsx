@@ -2,6 +2,7 @@ import { SiteHeader } from "@/components/marketing/site-header";
 import { SiteFooter } from "@/components/marketing/site-footer";
 import { Hero } from "@/components/marketing/hero";
 import { TrustStrip } from "@/components/marketing/trust-strip";
+import { FeatureTrio } from "@/components/marketing/feature-trio";
 import { Showcase } from "@/components/marketing/showcase";
 import { UseCases } from "@/components/marketing/use-cases";
 import { Journey } from "@/components/marketing/journey";
@@ -34,6 +35,7 @@ export default function HomePage() {
       <main className="flex-1">
         <Hero />
         <TrustStrip />
+        <FeatureTrio />
         <Showcase />
         <UseCases />
         <Journey />

@@ -67,7 +67,10 @@ const features = [
 
 export function Features() {
   return (
-    <Section id="features">
+    // Mint-wash band. The page alternates paper and mint rather than tinting
+    // every section: a wash only separates when the thing beside it isn't washed
+    // too, and this is the band the eye should land on after the trio.
+    <Section id="features" className="bg-secondary/60">
       <div className="container">
         <SectionHeading
           eyebrow="Everything you need"
@@ -79,18 +82,20 @@ export function Features() {
             lines and the row read as a wall. Stagger replaces the hand-tuned
             `delay={(i % 4) * 80}`, which had to be renumbered by hand whenever a
             feature was added or reordered. */}
-        <Stagger className="mt-16 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" step={0.06}>
+        <Stagger className="mt-14 grid gap-4 sm:grid-cols-2" step={0.06}>
           {features.map((feature) => (
             <StaggerItem key={feature.title} className="h-full">
               <Card interactive className="group h-full overflow-hidden">
-                <CardContent className="flex h-full flex-col gap-4 p-6">
-                  <span className="grid size-11 place-items-center rounded-xl bg-brand-50 text-brand-600 transition-all duration-300 group-hover:scale-110 group-hover:bg-brand-gradient group-hover:text-white">
-                    <feature.icon className="size-5" aria-hidden />
+                <CardContent className="flex h-full items-start gap-4 p-6">
+                  <span className="grid size-11 shrink-0 place-items-center rounded-full bg-brand-50 text-brand-600 transition-all duration-300 group-hover:scale-110 group-hover:bg-brand-gradient group-hover:text-white">
+                    <feature.icon className="size-5 stroke-[1.5]" aria-hidden />
                   </span>
-                  <h3 className="font-display text-base font-semibold">{feature.title}</h3>
-                  <p className="text-sm leading-relaxed text-muted-foreground">
-                    {feature.description}
-                  </p>
+                  <div className="min-w-0">
+                    <h3 className="font-display text-base font-semibold">{feature.title}</h3>
+                    <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                      {feature.description}
+                    </p>
+                  </div>
                 </CardContent>
               </Card>
             </StaggerItem>

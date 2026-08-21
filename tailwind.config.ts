@@ -77,6 +77,7 @@ const config: Config = {
         // thing wherever they appear.
         lime: "hsl(var(--lime))",
         ink: "hsl(var(--ink))",
+        paper: "hsl(var(--paper))",
         periwinkle: "hsl(var(--periwinkle))",
         card: {
           DEFAULT: "hsl(var(--card))",
