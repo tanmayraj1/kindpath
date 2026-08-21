@@ -86,6 +86,10 @@ const config: Config = {
         sm: "calc(var(--radius) - 8px)",
         xl: "calc(var(--radius) + 4px)",
         "2xl": "calc(var(--radius) + 8px)",
+        // Named by role rather than by size, so a component says what it is
+        // instead of how round it happens to be.
+        card: "24px",
+        input: "14px",
       },
       fontFamily: {
         sans: ["var(--font-sans)", "system-ui", "sans-serif"],
@@ -111,6 +115,10 @@ const config: Config = {
         lg: "0 12px 28px -8px rgb(16 24 40 / 0.14), 0 4px 12px -4px rgb(16 24 40 / 0.08)",
         xl: "0 24px 48px -12px rgb(16 24 40 / 0.18)",
         brand: "0 8px 24px -6px hsl(var(--brand-600) / 0.45)",
+        // Whisper-soft is the resting state; the heavier step is earned by hover
+        // only. Shadows carry elevation here, never decoration.
+        soft: "var(--shadow-soft)",
+        lift: "var(--shadow-lift)",
       },
       backgroundImage: {
         "brand-gradient":
