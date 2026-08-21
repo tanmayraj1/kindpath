@@ -11,7 +11,7 @@ const highlights = [
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="grid min-h-screen lg:grid-cols-2">
+    <div className="surface-donor grid min-h-screen bg-background lg:grid-cols-2">
       {/* form side */}
       <div className="flex flex-col px-6 py-8 sm:px-12">
         <Link href="/" aria-label="KindPath home" className="w-fit">

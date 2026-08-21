@@ -2,98 +2,197 @@
 @tailwind components;
 @tailwind utilities;
 
-/*
- * KindPath design tokens.
- * Brand = trust indigo. Accent = warm violet. Neutrals = slate.
- * Edit values HERE only — every component reads from these variables.
- */
 @layer base {
+  /*
+   * KindPath design tokens.
+   *
+   * ONE palette, three surface accents. The master values live here as raw HSL
+   * triples; every component reads the semantic names below and never a literal.
+   *
+   *   ink #101613 · paper #FFF
+   *   marketing  mint-wash #E9F5F0 · teal       #1F7A6D
+   *   dashboard  canvas    #ECEEF1 · lime       #D9F103 · periwinkle #A8B8F8
+   *   donor      cream     #FAF9EF · sage       #8A9B6E · olive #3F4A26 · peach #F3C99B
+   *
+   * The surfaces are expressed as SCOPES, not as new class names: `.surface-app`
+   * and `.surface-donor` re-point the SAME tokens the whole codebase already
+   * uses. That is what keeps this a reskin — an existing `bg-brand-50` or
+   * `text-brand-600` in any of 72 pages resolves to teal on marketing, periwinkle
+   * in a dashboard and sage in the donor portal, with no edit to the component.
+   * Adding per-surface class names instead would have meant touching every call
+   * site, which is how a reskin turns into a refactor.
+   */
   :root {
-    /* brand scale (indigo) */
-    --brand-50: 226 100% 97%;
-    --brand-100: 226 100% 94%;
-    --brand-200: 228 96% 89%;
-    --brand-300: 230 94% 82%;
-    --brand-400: 234 89% 74%;
-    --brand-500: 239 84% 67%;
-    --brand-600: 243 75% 59%;
-    --brand-700: 245 58% 51%;
-    --brand-800: 244 55% 41%;
-    --brand-900: 242 47% 34%;
-    --brand-950: 244 47% 20%;
+    /* ── master palette (raw, surface-independent) ───────────────────── */
+    --ink: 150 16% 7%;
+    --paper: 0 0% 100%;
+    --mint-wash: 155 38% 94%;
+    --teal: 171 60% 30%;
+    --canvas: 216 15% 94%;
+    --lime: 66 98% 48%;
+    --periwinkle: 228 85% 82%;
+    --cream: 55 52% 96%;
+    --sage: 83 18% 52%;
+    --olive: 78 32% 22%;
+    --peach: 31 79% 78%;
 
-    /* semantic */
-    --background: 0 0% 100%;
-    --foreground: 222 47% 11%;
+    /* ── brand ramp — MARKETING default (teal) ───────────────────────── */
+    --brand-50: 158 44% 96%;
+    --brand-100: 160 44% 91%;
+    --brand-200: 163 42% 82%;
+    --brand-300: 166 42% 68%;
+    --brand-400: 169 48% 50%;
+    --brand-500: 171 56% 38%;
+    --brand-600: 171 60% 30%;
+    --brand-700: 172 62% 25%;
+    --brand-800: 173 60% 20%;
+    --brand-900: 174 55% 16%;
+    --brand-950: 175 55% 10%;
+
+    /* ── semantic ────────────────────────────────────────────────────── */
+    --background: var(--paper);
+    --foreground: var(--ink);
 
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: var(--ink);
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover-foreground: var(--ink);
 
-    --primary: 243 75% 59%;
+    --primary: var(--teal);
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 222 47% 11%;
+    --secondary: var(--mint-wash);
+    --secondary-foreground: var(--ink);
 
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 46%;
+    --muted: 150 12% 96%;
+    --muted-foreground: 150 8% 42%;
 
-    --accent: 262 83% 67%;
+    --accent: var(--sage);
     --accent-foreground: 0 0% 100%;
 
-    --success: 152 60% 40%;
+    --success: 152 55% 32%;
     --success-foreground: 0 0% 100%;
 
-    --warning: 38 92% 50%;
-    --warning-foreground: 28 80% 16%;
+    --warning: 33 85% 48%;
+    --warning-foreground: 28 80% 14%;
 
-    --destructive: 0 72% 51%;
+    --destructive: 0 65% 47%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 243 75% 59%;
+    --border: 150 12% 90%;
+    --input: 150 12% 88%;
+    --ring: var(--teal);
 
-    --radius: 0.75rem;
+    /* Radius language: cards 24, inputs 14, pills handled per-component.
+       --radius drives `rounded-lg`; the xl/2xl steps derive from it. */
+    --radius: 0.875rem;
+
+    /* Whisper-soft by default; the heavier step is for hover-lift only. */
+    --shadow-soft: 0 6px 24px rgba(15, 30, 20, 0.06);
+    --shadow-lift: 0 14px 40px rgba(15, 30, 20, 0.12);
+  }
+
+  /*
+   * DASHBOARD surface — org, charity and platform admin.
+   * Canvas ground, periwinkle system accent, lime reserved for the single hero
+   * metric (applied per-component, not as a token, precisely because exactly one
+   * card on the page should carry it).
+   * Primary is ink: the reference's black pill, which also keeps the brightest
+   * colour on the page attached to data rather than to a button.
+   */
+  .surface-app {
+    --brand-50: 228 80% 97%;
+    --brand-100: 228 84% 94%;
+    --brand-200: 228 85% 88%;
+    --brand-300: 228 85% 82%;
+    --brand-400: 228 78% 72%;
+    --brand-500: 228 70% 62%;
+    --brand-600: 228 62% 52%;
+    --brand-700: 228 56% 44%;
+    --brand-800: 228 52% 36%;
+    --brand-900: 228 48% 28%;
+    --brand-950: 228 46% 18%;
+
+    --background: var(--canvas);
+    --secondary: 216 15% 96%;
+    --accent: var(--periwinkle);
+    --accent-foreground: var(--ink);
+    --primary: var(--ink);
+    --primary-foreground: 0 0% 100%;
+    --ring: 228 62% 52%;
+    --border: 216 12% 89%;
+    --input: 216 12% 87%;
+    --muted: 216 15% 96%;
+    --muted-foreground: 216 8% 44%;
+  }
+
+  /*
+   * DONOR surface — auth, portal, volunteer, public giving.
+   * Cream ground, sage ramp, olive primary. Warmer and lower-contrast than the
+   * dashboard on purpose: this audience skews older and arrives from an email,
+   * not from daily use.
+   */
+  .surface-donor {
+    --brand-50: 60 40% 96%;
+    --brand-100: 70 30% 92%;
+    --brand-200: 78 24% 85%;
+    --brand-300: 82 20% 72%;
+    --brand-400: 83 19% 60%;
+    --brand-500: 83 18% 52%;
+    --brand-600: 80 24% 38%;
+    --brand-700: 78 32% 22%;
+    --brand-800: 78 34% 18%;
+    --brand-900: 78 36% 14%;
+    --brand-950: 78 38% 9%;
+
+    --background: var(--cream);
+    --secondary: 55 40% 93%;
+    --accent: var(--peach);
+    --accent-foreground: var(--ink);
+    --primary: var(--olive);
+    --primary-foreground: 0 0% 100%;
+    --ring: 83 18% 52%;
+    --border: 55 20% 88%;
+    --input: 55 20% 86%;
+    --muted: 55 40% 94%;
+    --muted-foreground: 60 6% 40%;
   }
 
   .dark {
-    --background: 224 47% 7%;
-    --foreground: 210 40% 98%;
+    --background: 150 16% 7%;
+    --foreground: 150 10% 96%;
 
-    --card: 222 44% 10%;
-    --card-foreground: 210 40% 98%;
+    --card: 150 14% 10%;
+    --card-foreground: 150 10% 96%;
 
-    --popover: 222 44% 10%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 150 14% 10%;
+    --popover-foreground: 150 10% 96%;
 
-    --primary: 239 84% 67%;
+    --primary: 171 50% 45%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 217 33% 17%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 150 12% 16%;
+    --secondary-foreground: 150 10% 96%;
 
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20% 65%;
+    --muted: 150 12% 16%;
+    --muted-foreground: 150 8% 62%;
 
-    --accent: 262 83% 72%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 83 20% 58%;
+    --accent-foreground: 150 16% 7%;
 
-    --success: 152 55% 45%;
+    --success: 152 50% 45%;
     --success-foreground: 0 0% 100%;
 
-    --warning: 38 92% 55%;
+    --warning: 33 85% 55%;
     --warning-foreground: 28 80% 12%;
 
-    --destructive: 0 72% 56%;
+    --destructive: 0 65% 55%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 217 33% 20%;
-    --input: 217 33% 22%;
-    --ring: 239 84% 67%;
+    --border: 150 10% 20%;
+    --input: 150 10% 22%;
+    --ring: 171 50% 45%;
   }
 }
 

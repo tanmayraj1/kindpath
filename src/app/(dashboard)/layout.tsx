@@ -23,7 +23,7 @@ export default async function DashboardLayout({
   if (!access.active) {
     const unpaid = access.billing === "locked" && access.status === "active";
     return (
-      <div className="grid min-h-screen place-items-center bg-secondary/30 p-6">
+      <div className="surface-app grid min-h-screen place-items-center bg-background p-6">
         <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 text-center shadow-sm">
           <div className="flex justify-center">
             <Logo />
@@ -55,15 +55,20 @@ export default async function DashboardLayout({
   }
 
   return (
-    <OrgShell
-      plan={usage.plan}
-      donors={usage.donors}
-      limit={usage.limit}
-      pct={usage.pct}
-      features={access.features}
-    >
-      <BillingBanner billing={access.billing} daysLeft={access.daysLeft} />
-      {children}
-    </OrgShell>
+    // Surface scope. Re-points the shared design tokens (see globals.css) so every
+    // existing brand-* class in this subtree resolves to the dashboard accent,
+    // with no per-component edit.
+    <div className="surface-app min-h-screen bg-background">
+      <OrgShell
+        plan={usage.plan}
+        donors={usage.donors}
+        limit={usage.limit}
+        pct={usage.pct}
+        features={access.features}
+      >
+        <BillingBanner billing={access.billing} daysLeft={access.daysLeft} />
+        {children}
+      </OrgShell>
+    </div>
   );
 }
