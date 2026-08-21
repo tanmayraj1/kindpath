@@ -76,6 +76,17 @@ export function SiteFooter() {
           </p>
         </div>
       </div>
+
+      {/* Oversized wordmark as a closing note. Clipped at the baseline so it
+          reads as a watermark the page rests on rather than a heading, and
+          aria-hidden because the accessible name is already on the logo link
+          above — a screen reader reaching the end of the page should not hear
+          "KindPath" a second time as if it were new content. */}
+      <div aria-hidden className="relative mt-4 h-[9vw] min-h-[3.5rem] overflow-hidden select-none">
+        <span className="pointer-events-none absolute inset-x-0 -top-[3.2vw] block bg-gradient-to-b from-brand-500/20 to-transparent bg-clip-text text-center font-display text-[15vw] font-extrabold leading-none tracking-tight text-transparent">
+          KindPath
+        </span>
+      </div>
     </footer>
   );
 }

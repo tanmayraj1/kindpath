@@ -54,7 +54,13 @@ const plans: Plan[] = [
       "Up to 1,500 donors",
       "Everything in Starter, plus:",
       "Fund & designation tracking",
-      "SMS notifications & alerts",
+      // Was "SMS notifications & alerts". Nothing in this codebase can send an
+      // SMS: there is no provider, and NotificationChannel.sms is a value no
+      // code path writes. Selling it on a paid tier is the same error as the
+      // fabricated metrics removed from the landing page — worse, because a
+      // charity would be paying for it. Replaced with event ticketing, which is
+      // built (src/app/(dashboard)/dashboard/events) and actually ships today.
+      "Event ticketing & attendance",
       "Donor segments & campaigns (CASL)",
       "Advanced reporting & exports",
       "Annual consolidated receipts",

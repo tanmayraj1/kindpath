@@ -119,9 +119,25 @@ const config: Config = {
           "linear-gradient(to right, hsl(var(--border)) 1px, transparent 1px), linear-gradient(to bottom, hsl(var(--border)) 1px, transparent 1px)",
       },
       keyframes: {
+        // Two identical copies of the track sit end to end, so translating by
+        // exactly -50% lands the second copy where the first began — the loop
+        // has no visible seam and needs no JS to reset it.
+        marquee: {
+          "0%": { transform: "translateX(0)" },
+          "100%": { transform: "translateX(-50%)" },
+        },
         "fade-in-up": {
           "0%": { opacity: "0", transform: "translateY(12px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        // Hero entrance. Deliberately a CSS keyframe and not a framer-motion
+        // animation: CSS animations complete in a background tab, while
+        // rAF-driven ones stall there. A visitor who cmd-clicks the link and
+        // comes back to the tab a minute later should not find an empty hero,
+        // and above-the-fold copy shouldn't need JS to have run to be readable.
+        "rise-in": {
+          "0%": { opacity: "0", transform: "translateY(26px)", filter: "blur(6px)" },
+          "100%": { opacity: "1", transform: "translateY(0)", filter: "blur(0)" },
         },
         float: {
           "0%, 100%": { transform: "translateY(0)" },
@@ -141,7 +157,9 @@ const config: Config = {
         },
       },
       animation: {
+        marquee: "marquee 38s linear infinite",
         "fade-in-up": "fade-in-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both",
+        "rise-in": "rise-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) both",
         float: "float 5s ease-in-out infinite",
         "float-slow": "float 7s ease-in-out infinite",
         "pulse-ring": "pulse-ring 2.2s cubic-bezier(0.16, 1, 0.3, 1) infinite",

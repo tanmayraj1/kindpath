@@ -1,3 +1,5 @@
+"use client";
+
 import {
   Repeat,
   FileCheck2,
@@ -10,7 +12,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Section, SectionHeading } from "@/components/ui/section";
-import { Reveal } from "./reveal";
+import { Stagger, StaggerItem } from "@/components/motion/primitives";
 
 const features = [
   {
@@ -72,13 +74,18 @@ export function Features() {
           title="One platform for modern faith-based giving"
           description="From the first donation to year-end tax receipts, KindPath handles the busywork so your team can focus on community."
         />
-        <div className="mt-16 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {features.map((feature, i) => (
-            <Reveal key={feature.title} variant="up" delay={(i % 4) * 80} className="h-full">
+        {/* Three columns rather than four. At lg the four-up grid gave each card
+            a ~14em measure, so every description broke to six or seven ragged
+            lines and the row read as a wall. Stagger replaces the hand-tuned
+            `delay={(i % 4) * 80}`, which had to be renumbered by hand whenever a
+            feature was added or reordered. */}
+        <Stagger className="mt-16 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" step={0.06}>
+          {features.map((feature) => (
+            <StaggerItem key={feature.title} className="h-full">
               <Card interactive className="group h-full overflow-hidden">
-                <CardContent className="flex flex-col gap-4 p-6">
+                <CardContent className="flex h-full flex-col gap-4 p-6">
                   <span className="grid size-11 place-items-center rounded-xl bg-brand-50 text-brand-600 transition-all duration-300 group-hover:scale-110 group-hover:bg-brand-gradient group-hover:text-white">
-                    <feature.icon className="size-5" />
+                    <feature.icon className="size-5" aria-hidden />
                   </span>
                   <h3 className="font-display text-base font-semibold">{feature.title}</h3>
                   <p className="text-sm leading-relaxed text-muted-foreground">
@@ -86,9 +93,9 @@ export function Features() {
                   </p>
                 </CardContent>
               </Card>
-            </Reveal>
+            </StaggerItem>
           ))}
-        </div>
+        </Stagger>
       </div>
     </Section>
   );
