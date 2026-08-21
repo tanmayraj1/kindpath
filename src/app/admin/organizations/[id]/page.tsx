@@ -10,6 +10,15 @@ import { getEffectiveFeatures, FEATURES } from "@/lib/features";
 import { formatCAD } from "@/lib/utils";
 import { notFound } from "next/navigation";
 
+// Static rather than generateMetadata: the detail pages already load their
+// record inside a withTenant transaction, and Prisma calls are not deduped
+// across a second metadata pass — naming the row in the tab would cost every
+// one of these pages a duplicate query. The section name is what actually
+// fixes the defect: without it these 13 pages fell through to the root
+// layout's marketing title, so every open tab read "KindPath — Donation
+// management for faith communities" and none could be told apart.
+export const metadata = { title: "Organization" };
+
 export default async function OrgOverview({ params }: { params: { id: string } }) {
   const [org, data] = await Promise.all([getOrgManage(params.id), getOrgDashboard(params.id)]);
   if (!org) notFound();

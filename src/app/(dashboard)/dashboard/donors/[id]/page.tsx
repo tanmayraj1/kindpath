@@ -13,6 +13,15 @@ import { requireOrgUser } from "@/lib/auth/guards";
 import { getOrgDonorDetail } from "@/lib/queries/org";
 import { formatCAD } from "@/lib/utils";
 
+// Static rather than generateMetadata: the detail pages already load their
+// record inside a withTenant transaction, and Prisma calls are not deduped
+// across a second metadata pass — naming the row in the tab would cost every
+// one of these pages a duplicate query. The section name is what actually
+// fixes the defect: without it these 13 pages fell through to the root
+// layout's marketing title, so every open tab read "KindPath — Donation
+// management for faith communities" and none could be told apart.
+export const metadata = { title: "Donor profile" };
+
 const statusVariant: Record<string, "success" | "destructive" | "warning" | "neutral"> = {
   succeeded: "success",
   failed: "destructive",
@@ -69,17 +78,22 @@ export default async function DonorDetailPage({ params }: { params: { id: string
                   )}
                 </p>
               </div>
-              <div className="grid grid-cols-1 gap-2 border-t border-border pt-4 text-center sm:grid-cols-3">
+              {/* Three short numbers, so they stay side by side at every width —
+                  stacking them cost about 200px of scroll on a phone to show
+                  "$0 / 0 / 1". The number shrinks a step on small screens so a
+                  six-figure lifetime total still fits its third of the row, and
+                  tnum keeps the three from wobbling against each other. */}
+              <div className="grid grid-cols-3 gap-2 border-t border-border pt-4 text-center">
                 <div>
-                  <p className="font-display text-lg font-bold">{formatCAD(data.totalGiven, { maximumFractionDigits: 0 })}</p>
+                  <p className="tnum font-display text-base font-bold sm:text-lg">{formatCAD(data.totalGiven, { maximumFractionDigits: 0 })}</p>
                   <p className="text-xs text-muted-foreground">Total</p>
                 </div>
                 <div>
-                  <p className="font-display text-lg font-bold">{data.activePlans}</p>
+                  <p className="tnum font-display text-base font-bold sm:text-lg">{data.activePlans}</p>
                   <p className="text-xs text-muted-foreground">Plans</p>
                 </div>
                 <div>
-                  <p className="font-display text-lg font-bold">{data.receiptsCount}</p>
+                  <p className="tnum font-display text-base font-bold sm:text-lg">{data.receiptsCount}</p>
                   <p className="text-xs text-muted-foreground">Receipts</p>
                 </div>
               </div>

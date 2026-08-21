@@ -233,15 +233,26 @@ export function DonationFlow({
                 {payError}
               </div>
             )}
+            {/* Buttons are nowrap/fixed-height by default, which is right for a
+                label of known length — this one carries the amount, so it grows
+                with the gift. At $1,250 it pushed 14px past the button's rounded
+                edge and kept going; overflow is visible, so the text escaped the
+                button rather than clipping. Wrapping instead of overflowing keeps
+                the largest gifts — and "/mo" — inside the control. */}
             <Button
               size="lg"
-              className="w-full"
+              className="h-auto min-h-12 w-full whitespace-normal px-4 py-3 text-center sm:px-7"
               disabled={effectiveAmount < 1 || charging}
               onClick={() => (hosted ? payHosted() : setStep(2))}
             >
               {charging && <Loader2 className="size-4 animate-spin" />}
-              {hosted ? "Continue to secure payment" : "Continue"} · {formatCAD(effectiveAmount)}
-              {frequency === "monthly" ? "/mo" : ""}
+              <span>{hosted ? "Continue to secure payment" : "Continue"}</span>
+              {/* The separator belongs to the amount, not to the label before it —
+                  otherwise the wrap leaves a dangling "·" at the end of line one. */}
+              <span className="tnum whitespace-nowrap">
+                · {formatCAD(effectiveAmount)}
+                {frequency === "monthly" ? "/mo" : ""}
+              </span>
             </Button>
           </div>
         )}

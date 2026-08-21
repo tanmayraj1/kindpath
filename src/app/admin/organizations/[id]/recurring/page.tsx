@@ -8,6 +8,15 @@ import { listRecurringPlans } from "@/lib/queries/org";
 import { parsePageParams } from "@/lib/pagination";
 import { formatCAD } from "@/lib/utils";
 
+// Static rather than generateMetadata: the detail pages already load their
+// record inside a withTenant transaction, and Prisma calls are not deduped
+// across a second metadata pass — naming the row in the tab would cost every
+// one of these pages a duplicate query. The section name is what actually
+// fixes the defect: without it these 13 pages fell through to the root
+// layout's marketing title, so every open tab read "KindPath — Donation
+// management for faith communities" and none could be told apart.
+export const metadata = { title: "Organization recurring plans" };
+
 const statusVariant: Record<string, "success" | "warning" | "neutral" | "destructive"> = {
   active: "success",
   paused: "warning",

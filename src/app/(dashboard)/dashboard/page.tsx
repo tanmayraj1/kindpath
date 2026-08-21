@@ -17,6 +17,15 @@ import { requireOrgUser } from "@/lib/auth/guards";
 import { getOrgDashboard } from "@/lib/queries/org-dashboard";
 import { countDeliveryFailures } from "@/lib/queries/comms";
 
+// Static rather than generateMetadata: the detail pages already load their
+// record inside a withTenant transaction, and Prisma calls are not deduped
+// across a second metadata pass — naming the row in the tab would cost every
+// one of these pages a duplicate query. The section name is what actually
+// fixes the defect: without it these 13 pages fell through to the root
+// layout's marketing title, so every open tab read "KindPath — Donation
+// management for faith communities" and none could be told apart.
+export const metadata = { title: "Overview" };
+
 const fundColors = ["bg-brand-500", "bg-accent", "bg-success", "bg-warning", "bg-brand-300"];
 
 const statusVariant: Record<string, "success" | "destructive" | "warning" | "neutral"> = {
@@ -126,8 +135,12 @@ export default async function DashboardPage() {
           {stats.map((stat) => (
             <Card key={stat.label}>
               <CardContent className="flex flex-col gap-3 p-5">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-muted-foreground">{stat.label}</p>
+                {/* Reserve two lines for the label. These cards sit in one grid
+                    row, so a label that wraps ("Active recurring donors" does at
+                    lg) pushed only that card's number down and broke the baseline
+                    the four values are read across. */}
+                <div className="flex min-h-10 items-start justify-between gap-2">
+                  <p className="text-sm font-medium leading-5 text-muted-foreground">{stat.label}</p>
                   <span className="grid size-8 place-items-center rounded-lg bg-brand-50 text-brand-600">
                     <stat.icon className="size-4" aria-hidden />
                   </span>
