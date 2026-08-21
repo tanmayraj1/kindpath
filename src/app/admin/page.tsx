@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Building2, Users, DollarSign, TrendingUp, FileCheck2 } from "lucide-react";
 import { Topbar } from "@/components/dashboard/topbar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatCard } from "@/components/dashboard/stat-card";
 import { Badge } from "@/components/ui/badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/table";
 import { requirePlatformAdmin } from "@/lib/auth/guards";
@@ -14,31 +15,37 @@ export default async function AdminOverview() {
   const session = await requirePlatformAdmin();
   const [stats, orgs] = await Promise.all([getPlatformStats(), listOrganizations()]);
 
+  // MRR carries the lime treatment here for the same reason "Raised this month"
+  // does on the org dashboard: it is the one number this operator opens the page
+  // to check. Exactly one per row — see StatCard.
   const cards = [
-    { label: "Active organizations", value: String(stats.activeOrgs), icon: Building2 },
-    { label: "MRR", value: formatCAD(stats.mrr), icon: TrendingUp },
+    { label: "MRR", value: formatCAD(stats.mrr), icon: TrendingUp, href: "/admin/revenue", hero: true },
+    { label: "Active organizations", value: String(stats.activeOrgs), icon: Building2, href: "/admin/organizations" },
     { label: "Total donors", value: stats.totalDonors.toLocaleString("en-CA"), icon: Users },
-    { label: "Donations processed", value: formatCAD(stats.totalValue, { notation: "compact" }), icon: DollarSign },
+    { label: "Donations processed", value: formatCAD(stats.totalValue, { notation: "compact" }), icon: DollarSign, href: "/admin/analytics" },
     { label: "Receipts issued", value: stats.receipts.toLocaleString("en-CA"), icon: FileCheck2 },
   ];
 
   return (
     <>
-      <Topbar title="Platform overview" user={{ name: session.name, email: session.email }} />
+      <Topbar
+        title="Platform overview"
+        subtitle="Every organization on KindPath, and what the platform is earning."
+        user={{ name: session.name, email: session.email }}
+      />
       <main className="flex flex-col gap-6 p-6">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          {cards.map((c) => (
-            <Card key={c.label}>
-              <CardContent className="flex flex-col gap-3 p-5">
-                <span className="grid size-9 place-items-center rounded-lg bg-brand-50 text-brand-600">
-                  <c.icon className="size-[18px]" />
-                </span>
-                <div>
-                  <p className="font-display text-2xl font-bold">{c.value}</p>
-                  <p className="text-sm text-muted-foreground">{c.label}</p>
-                </div>
-              </CardContent>
-            </Card>
+          {cards.map((c, i) => (
+            <StatCard
+              key={c.label}
+              label={c.label}
+              value={c.value}
+              icon={c.icon}
+              href={c.href}
+              hero={c.hero}
+              className="motion-safe:animate-rise-in"
+              style={{ animationDelay: `${i * 70}ms` }}
+            />
           ))}
         </div>
 

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Sparkline } from "@/components/ui/sparkline";
+import { StatCard } from "@/components/dashboard/stat-card";
 import { requireDonor } from "@/lib/auth/guards";
 import { getDonorOverview } from "@/lib/queries/donor";
 import { formatCAD } from "@/lib/utils";
@@ -23,10 +24,12 @@ export default async function PortalOverview() {
   const session = await requireDonor();
   const data = await getDonorOverview(session.orgId, session.sub);
 
+  // "Given this year" is the hero: it is the number a donor opens this page to
+  // see, and the one they need at tax time. Exactly one per row — see StatCard.
   const stats = [
-    { label: "Given this year", value: formatCAD(data.thisYear), icon: HandCoins },
-    { label: "Lifetime giving", value: formatCAD(data.lifetime), icon: HandCoins },
-    { label: "Active recurring", value: String(data.activePlans), icon: Repeat },
+    { label: "Given this year", value: formatCAD(data.thisYear), icon: HandCoins, hero: true, href: "/portal/receipts" },
+    { label: "Lifetime giving", value: formatCAD(data.lifetime), icon: HandCoins, href: "/portal/history" },
+    { label: "Active recurring", value: String(data.activePlans), icon: Repeat, href: "/portal/recurring" },
     {
       label: "Next gift",
       value: data.nextBilling ? new Date(data.nextBilling).toLocaleDateString("en-CA") : "—",
@@ -74,21 +77,16 @@ export default async function PortalOverview() {
             gated behind requestAnimationFrame having run. */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {stats.map((s, i) => (
-            <Card
+            <StatCard
               key={s.label}
-              className="h-full motion-safe:animate-rise-in"
+              label={s.label}
+              value={s.value}
+              icon={s.icon}
+              href={s.href}
+              hero={s.hero}
+              className="motion-safe:animate-rise-in"
               style={{ animationDelay: `${i * 70}ms` }}
-            >
-              <CardContent className="flex h-full flex-col gap-3 p-5">
-                <span className="grid size-9 place-items-center rounded-lg bg-brand-50 text-brand-600">
-                  <s.icon className="size-[18px]" aria-hidden />
-                </span>
-                <div>
-                  <p className="tnum font-display text-2xl font-bold">{s.value}</p>
-                  <p className="text-sm text-muted-foreground">{s.label}</p>
-                </div>
-              </CardContent>
-            </Card>
+            />
           ))}
         </div>
 

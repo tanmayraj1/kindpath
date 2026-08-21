@@ -1,5 +1,7 @@
 import { Download } from "lucide-react";
+import { TrendingUp, AlertCircle, Hourglass, Building2 } from "lucide-react";
 import { Topbar } from "@/components/dashboard/topbar";
+import { StatCard } from "@/components/dashboard/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, Thead, Th, Tr, Td } from "@/components/ui/table";
@@ -39,26 +41,38 @@ export default async function RevenuePage() {
     <>
       <Topbar
         title="Revenue"
+        subtitle="What KindPath bills its customers, and what is still owed."
         user={{ name: session.name, email: session.email }}
         action={<RunSubscriptionCycleButton />}
       />
       <main className="flex flex-col gap-6 p-4 sm:p-6">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[
-            { label: "MRR", value: formatCAD(mrr), hint: `${paying} paying` },
-            { label: "Outstanding", value: formatCAD(outstanding), hint: "unpaid invoices" },
-            { label: "In trial", value: String(trialing), hint: "not yet billed" },
-            { label: "Organizations", value: String(rows.length), hint: "total" },
-          ].map((s) => (
-            <Card key={s.label}>
-              <CardHeader>
-                <CardTitle className="text-sm font-medium text-muted-foreground">{s.label}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="font-display text-2xl font-bold">{s.value}</p>
-                <p className="mt-1 text-sm text-muted-foreground">{s.hint}</p>
-              </CardContent>
-            </Card>
+            { label: "MRR", value: formatCAD(mrr), hint: `${paying} paying`, icon: TrendingUp, hero: true },
+            // Outstanding is flagged destructive rather than left neutral: unpaid
+            // invoices are the one number on this page that needs someone to act.
+            {
+              label: "Outstanding",
+              value: formatCAD(outstanding),
+              hint: "unpaid invoices",
+              icon: AlertCircle,
+              badge: outstanding > 0 ? { text: "Action needed", tone: "destructive" as const } : undefined,
+            },
+            { label: "In trial", value: String(trialing), hint: "not yet billed", icon: Hourglass },
+            { label: "Organizations", value: String(rows.length), hint: "total", icon: Building2, href: "/admin/organizations" },
+          ].map((s, i) => (
+            <StatCard
+              key={s.label}
+              label={s.label}
+              value={s.value}
+              caption={s.hint}
+              icon={s.icon}
+              href={s.href}
+              hero={s.hero}
+              badge={s.badge}
+              className="motion-safe:animate-rise-in"
+              style={{ animationDelay: `${i * 70}ms` }}
+            />
           ))}
         </div>
 
