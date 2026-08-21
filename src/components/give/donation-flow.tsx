@@ -175,12 +175,17 @@ export function DonationFlow({
                     }}
                     aria-pressed={!custom && amount === p}
                     className={cn(
-                      // h-12: these are the primary controls on a page mostly used
-                      // on phones — thumb-sized, not mouse-sized.
-                      "tnum h-12 rounded-lg border text-base font-semibold transition-all",
+                      // h-14: these are the primary controls on a page mostly used
+                      // on phones — thumb-sized, not mouse-sized, and a notch
+                      // larger than the rest of the form because they are the
+                      // decision the page exists to collect.
+                      "tnum h-14 rounded-full border text-lg font-semibold transition-all",
+                      // Selected fills rather than outlines, and pops a little.
+                      // An outline-only selected state is easy to miss on a phone
+                      // in daylight, which is where most of these taps happen.
                       !custom && amount === p
-                        ? "border-brand-500 bg-brand-50 text-brand-700 shadow-xs ring-1 ring-brand-500/40"
-                        : "border-border text-foreground hover:border-brand-300 hover:bg-secondary"
+                        ? "scale-[1.03] border-transparent bg-primary text-primary-foreground shadow-soft"
+                        : "border-border bg-card text-foreground hover:border-brand-400 hover:bg-secondary"
                     )}
                   >
                     ${p}
@@ -196,21 +201,53 @@ export function DonationFlow({
             </div>
 
             {org.funds.length > 0 && (
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="fund">Fund</Label>
-                <select
-                  id="fund"
-                  value={fundId}
-                  onChange={(e) => setFundId(e.target.value)}
-                  className="flex h-11 w-full rounded-lg border border-input bg-background px-3.5 text-sm focus-visible:border-brand-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
-                >
-                  {org.funds.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              /*
+               * Chips, but built from real radio inputs inside a fieldset — not
+               * buttons. This replaced a <select>, which gave keyboard support,
+               * arrow-key navigation, a group label and "3 of 5" announcements
+               * for free; on a page whose audience skews older, losing that to
+               * gain a look would be a bad trade. Radios keep every one of them.
+               * The input is visually hidden rather than display:none, because
+               * display:none removes it from the tab order entirely.
+               */
+              <fieldset className="flex flex-col gap-2">
+                <legend className="mb-2 text-sm font-medium">Fund</legend>
+                <div className="flex flex-wrap gap-2">
+                  {org.funds.map((f, i) => {
+                    const selected = fundId === f.id;
+                    // Pastel rotation, so a row of chips reads as a set rather
+                    // than as five identical buttons.
+                    const tint = [
+                      "bg-secondary",
+                      "bg-accent/25",
+                      "bg-brand-100",
+                      "bg-periwinkle/25",
+                    ][i % 4];
+                    return (
+                      <label
+                        key={f.id}
+                        className={cn(
+                          "cursor-pointer rounded-full border px-4 py-2.5 text-sm font-medium transition-all",
+                          "has-[:focus-visible]:outline-none has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring/40",
+                          selected
+                            ? "scale-[1.03] border-transparent bg-primary text-primary-foreground shadow-soft"
+                            : cn("border-transparent text-foreground hover:brightness-95", tint)
+                        )}
+                      >
+                        <input
+                          type="radio"
+                          name="fund-choice"
+                          value={f.id}
+                          checked={selected}
+                          onChange={(e) => setFundId(e.target.value)}
+                          className="sr-only"
+                        />
+                        {f.name}
+                      </label>
+                    );
+                  })}
+                </div>
+              </fieldset>
             )}
 
             {baseAmount > 0 && (

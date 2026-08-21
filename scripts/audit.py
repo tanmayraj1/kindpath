@@ -11,11 +11,33 @@ def route_of(p: pathlib.Path) -> str:
 def local_imports(src: str):
     return re.findall(r'from "@/components/([^"]+)"', src)
 
+def submitted_names(src: str):
+    """
+    Only the `name=` attributes that actually sit inside a <form>.
+
+    A `name` is what the server receives; a `name` outside a form is markup, not
+    behaviour. Radio groups need one purely so arrow keys move between the
+    options, and counting those as form fields made this gate report a change
+    when the restyle had changed nothing submitted — which is how a parity check
+    stops being read and starts being rubber-stamped.
+    """
+    spans = []
+    for m in re.finditer(r"<form\b", src):
+        close = src.find("</form>", m.start())
+        if close != -1:
+            spans.append((m.start(), close))
+    names = []
+    for m in re.finditer(r'name="([^"]+)"', src):
+        if any(a <= m.start() <= b for a, b in spans):
+            names.append(m.group(1))
+    return names
+
+
 def scan(src: str):
     return {
         "links":   sorted(set(re.findall(r'href=\{?["`]([^"`{}]+)["`]', src))),
         "actions": sorted(set(re.findall(r'action=\{(\w+)\}', src))),
-        "fields":  sorted(set(re.findall(r'name="([^"]+)"', src))),
+        "fields":  sorted(set(submitted_names(src))),
         "onclick": sorted(set(re.findall(r'on(?:Click|Submit|Change)=\{\(?\)?\s*=?>?\s*(\w+)', src))),
     }
 
@@ -54,7 +76,7 @@ out = ["# AUDIT.md — pre-reskin parity checklist",
 "",
 f"**{len(rows)} pages.**",
 "",
-"| Route | Links | Server actions | Form fields | Handlers |",
+"| Route | Links | Server actions | Submitted fields | Handlers |",
 "|---|---|---|---|---|"]
 
 def cell(xs, lim=14):

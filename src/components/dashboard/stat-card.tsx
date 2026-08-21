@@ -8,7 +8,12 @@ import { cn } from "@/lib/utils";
  * charity and platform admin — so the three read as one product rather than
  * three apps that happen to share a login.
  *
- * `hero` paints the card lime. EXACTLY ONE card per row should set it: the point
+ * `hero` paints the card in the surface's hero fill — lime in a dashboard,
+ * peach in the donor portal, brand on marketing. It reads a token rather than a
+ * literal so the highlight can never carry the wrong surface's accent: lime is
+ * the dashboard's colour and has no business on a donor page.
+ *
+ * EXACTLY ONE card per row should set it: the point
  * of the treatment is that the eye lands on the number that matters most before
  * reading anything, and a second lime card destroys that in the only way that
  * matters. It is a boolean rather than a colour prop for the same reason —
@@ -56,7 +61,7 @@ export function StatCard({
     <div
       className={cn(
         "relative flex min-w-0 flex-col gap-3 rounded-card p-5 shadow-soft transition-shadow",
-        hero ? "bg-lime text-ink" : "bg-card text-card-foreground",
+        hero ? "bg-hero text-hero-foreground" : "bg-card text-card-foreground",
         className
       )}
       style={style}
@@ -65,7 +70,7 @@ export function StatCard({
         <span
           className={cn(
             "grid size-10 shrink-0 place-items-center rounded-full",
-            hero ? "bg-ink/10 text-ink" : "bg-brand-50 text-brand-600"
+            hero ? "bg-hero-foreground/10 text-hero-foreground" : "bg-brand-50 text-brand-600"
           )}
         >
           <Icon className="size-[18px] stroke-[1.5]" aria-hidden />
@@ -77,7 +82,7 @@ export function StatCard({
             className={cn(
               "grid size-9 shrink-0 place-items-center rounded-full border transition-colors",
               hero
-                ? "border-ink/25 text-ink hover:bg-ink/10"
+                ? "border-hero-foreground/25 text-hero-foreground hover:bg-hero-foreground/10"
                 : "border-border text-foreground hover:bg-secondary"
             )}
           >
@@ -92,7 +97,7 @@ export function StatCard({
           <span
             className={cn(
               "tnum rounded-full px-2 py-0.5 text-xs font-semibold",
-              hero ? "bg-ink/10 text-ink" : badgeTone
+              hero ? "bg-hero-foreground/10 text-hero-foreground" : badgeTone
             )}
           >
             {badge.text}
@@ -101,11 +106,11 @@ export function StatCard({
       </div>
 
       <div>
-        <p className={cn("text-sm font-medium", hero ? "text-ink/80" : "text-muted-foreground")}>
+        <p className={cn("text-sm font-medium", hero ? "text-hero-foreground/80" : "text-muted-foreground")}>
           {label}
         </p>
         {caption && (
-          <p className={cn("mt-0.5 text-xs", hero ? "text-ink/60" : "text-muted-foreground")}>
+          <p className={cn("mt-0.5 text-xs", hero ? "text-hero-foreground/60" : "text-muted-foreground")}>
             {caption}
           </p>
         )}

@@ -17,7 +17,7 @@ was explicitly asked for.
 
 **72 pages.**
 
-| Route | Links | Server actions | Form fields | Handlers |
+| Route | Links | Server actions | Submitted fields | Handlers |
 |---|---|---|---|---|
 | `/change-password` | — | `formAction` | `confirm`, `current`, `password` | — |
 | `/claim` | `/login` | `formAction` | `email` | — |

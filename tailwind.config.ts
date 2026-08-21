@@ -78,6 +78,10 @@ const config: Config = {
         lime: "hsl(var(--lime))",
         ink: "hsl(var(--ink))",
         paper: "hsl(var(--paper))",
+        hero: {
+          DEFAULT: "hsl(var(--hero))",
+          foreground: "hsl(var(--hero-foreground))",
+        },
         periwinkle: "hsl(var(--periwinkle))",
         card: {
           DEFAULT: "hsl(var(--card))",

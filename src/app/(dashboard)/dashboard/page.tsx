@@ -170,8 +170,8 @@ export default async function DashboardPage() {
             >
               {stat.series && stat.series.some((n) => n > 0) && (
                 <>
-                  <Sparkline data={stat.series} height={30} className={stat.hero ? "text-ink" : undefined} />
-                  <p className={cn("mt-1 text-[11px]", stat.hero ? "text-ink/60" : "text-muted-foreground")}>Last 12 weeks</p>
+                  <Sparkline data={stat.series} height={30} className={stat.hero ? "text-hero-foreground" : undefined} />
+                  <p className={cn("mt-1 text-[11px]", stat.hero ? "text-hero-foreground/60" : "text-muted-foreground")}>Last 12 weeks</p>
                 </>
               )}
             </StatCard>

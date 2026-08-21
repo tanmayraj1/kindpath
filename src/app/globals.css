@@ -84,6 +84,13 @@
     --input: 150 12% 88%;
     --ring: var(--teal);
 
+    /* The hero-metric fill for StatCard. A token rather than a literal because
+       it is surface-specific: lime is the DASHBOARD accent and has no business
+       on a donor page, where the palette is cream and sage. Marketing has no
+       stat cards, so the default is simply the brand. */
+    --hero: var(--brand-600);
+    --hero-foreground: 0 0% 100%;
+
     /* Radius language: cards 24, inputs 14, pills handled per-component.
        --radius drives `rounded-lg`; the xl/2xl steps derive from it. */
     --radius: 0.875rem;
@@ -120,6 +127,8 @@
     --accent-foreground: var(--ink);
     --primary: var(--ink);
     --primary-foreground: 0 0% 100%;
+    --hero: var(--lime);
+    --hero-foreground: var(--ink);
     --ring: 228 62% 52%;
     --border: 216 12% 89%;
     --input: 216 12% 87%;
@@ -152,6 +161,11 @@
     --accent-foreground: var(--ink);
     --primary: var(--olive);
     --primary-foreground: 0 0% 100%;
+    /* Peach, not lime. Warm and low-contrast on purpose — this surface is read
+       once, from an email, by an audience that skews older, and the dashboard's
+       high-visibility lime reads as an alert here rather than as a highlight. */
+    --hero: var(--peach);
+    --hero-foreground: var(--ink);
     --ring: 83 18% 52%;
     --border: 55 20% 88%;
     --input: 55 20% 86%;
