@@ -135,6 +135,15 @@ const config: Config = {
         // rAF-driven ones stall there. A visitor who cmd-clicks the link and
         // comes back to the tab a minute later should not find an empty hero,
         // and above-the-fold copy shouldn't need JS to have run to be readable.
+        // Line-drawing for sparklines. Paired with pathLength="1" on the path,
+        // which normalises its length to 1 so a single dasharray works for any
+        // geometry. CSS rather than framer-motion for the same reason the hero
+        // is: this renders inside the dashboard, and app data must not need
+        // requestAnimationFrame to have run in order to be visible.
+        draw: {
+          "0%": { strokeDashoffset: "1" },
+          "100%": { strokeDashoffset: "0" },
+        },
         "rise-in": {
           "0%": { opacity: "0", transform: "translateY(26px)", filter: "blur(6px)" },
           "100%": { opacity: "1", transform: "translateY(0)", filter: "blur(0)" },
@@ -160,6 +169,7 @@ const config: Config = {
         marquee: "marquee 38s linear infinite",
         "fade-in-up": "fade-in-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both",
         "rise-in": "rise-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) both",
+        draw: "draw 0.9s cubic-bezier(0.16, 1, 0.3, 1) both",
         float: "float 5s ease-in-out infinite",
         "float-slow": "float 7s ease-in-out infinite",
         "pulse-ring": "pulse-ring 2.2s cubic-bezier(0.16, 1, 0.3, 1) infinite",

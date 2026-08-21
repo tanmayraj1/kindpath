@@ -32,6 +32,16 @@ export const riseVariants: Variants = {
   shown: { opacity: 1, y: 0, transition: { duration: 0.7, ease: EASE } },
 };
 
+/**
+ * Wrappers become grid and flex items constantly, and a grid item defaults to
+ * min-width:auto — it refuses to shrink below the intrinsic width of whatever it
+ * holds. That is the same defect that made the dashboard scroll sideways on a
+ * phone (see the note on Card), and a motion wrapper reintroduces it one level
+ * up: the Card inside can shrink, but the FadeIn around it cannot, so the page
+ * grows instead. min-w-0 on the wrapper keeps the fix intact.
+ */
+const WRAPPER = "min-w-0";
+
 type Dir = "up" | "down" | "left" | "right" | "none";
 
 const offset: Record<Dir, { x: number; y: number }> = {
@@ -70,11 +80,11 @@ export function FadeIn({
   const M = motion[Tag];
   const from = offset[direction];
 
-  if (reduced) return <Tag className={className}>{children}</Tag>;
+  if (reduced) return <Tag className={cn(WRAPPER, className)}>{children}</Tag>;
 
   return (
     <M
-      className={className}
+      className={cn(WRAPPER, className)}
       initial={{ opacity: 0, x: from.x, y: from.y }}
       whileInView={{ opacity: 1, x: 0, y: 0 }}
       viewport={{ once, amount: 0.25, margin: "0px 0px -8% 0px" }}
@@ -137,9 +147,9 @@ export function StaggerItem({
 }) {
   const reduced = useReducedMotion();
   const M = motion[Tag];
-  if (reduced) return <Tag className={className}>{children}</Tag>;
+  if (reduced) return <Tag className={cn(WRAPPER, className)}>{children}</Tag>;
   return (
-    <M className={className} variants={riseVariants}>
+    <M className={cn(WRAPPER, className)} variants={riseVariants}>
       {children}
     </M>
   );

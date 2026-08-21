@@ -3,6 +3,7 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { CheckCircle2, TrendingUp, Users2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { Section, SectionHeading } from "@/components/ui/section";
 import { EASE, FadeIn } from "@/components/motion/primitives";
 import { SparkRise } from "@/components/motion/line-art";
@@ -140,7 +141,12 @@ export function Showcase() {
         </div>
 
         {/* ── right: capability cloud ────────────────────────────────── */}
-        <FadeIn direction="left" delay={0.1} className="min-h-[26rem]">
+        {/* Rises rather than sliding in from the side. A horizontal reveal holds
+            the element translated 28px until its animation runs, and this one is
+            a full-width grid item at the right edge — so during that window it
+            pushed the document 28px wider and the whole page gained a horizontal
+            scrollbar. Vertical translation cannot do that. */}
+        <FadeIn direction="up" delay={0.1} className="min-h-[26rem]">
           <div className="relative flex h-full flex-col overflow-hidden rounded-2xl bg-brand-gradient p-6">
             <div
               aria-hidden
@@ -153,10 +159,16 @@ export function Showcase() {
               {rows.map((row, r) => (
                 <div
                   key={r}
-                  className="flex gap-3"
-                  // Alternate rows sit half a pill out of phase so the grid reads
-                  // as a drift rather than a table.
-                  style={{ marginLeft: r % 2 ? "2.25rem" : 0 }}
+                  // Alternate rows sit half a pill out of phase so the block reads
+                  // as a drift rather than a table — but only once there's room
+                  // for it. On a phone the panel is ~327px and a nowrap row of
+                  // three pills runs ~350px, so the offset rows were pushing the
+                  // last pill under the panel's clip and cutting a word in half.
+                  // Below lg they wrap and centre instead.
+                  className={cn(
+                    "flex flex-wrap justify-center gap-2.5 lg:flex-nowrap lg:justify-start lg:gap-3",
+                    r % 2 && "lg:ml-9"
+                  )}
                 >
                   {row.map((label, c) => (
                     <motion.span

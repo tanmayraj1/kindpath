@@ -10,6 +10,7 @@ import {
 import { Topbar } from "@/components/dashboard/topbar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Sparkline } from "@/components/ui/sparkline";
 import { EmptyState } from "@/components/ui/empty-state";
 import { buttonVariants } from "@/components/ui/button";
 import { cn, formatCAD } from "@/lib/utils";
@@ -57,11 +58,15 @@ export default async function DashboardPage() {
     value: string;
     icon: typeof TrendingUp;
     delta?: { pct: number; label: string };
+    /** Weekly totals — only the money card gets one; a count of donors has no
+        meaningful weekly shape, and a line under every number is decoration. */
+    series?: number[];
   }[] = [
     {
       label: "Raised this month",
       value: formatCAD(data.stats.raisedThisMonth),
       icon: TrendingUp,
+      series: data.trend,
       ...(deltaPct !== null
         ? { delta: { pct: deltaPct, label: "vs this time last month" } }
         : {}),
@@ -131,10 +136,19 @@ export default async function DashboardPage() {
           </Badge>
         </div>
 
+        {/* CSS stagger, not a scroll-triggered one. These cards are the first
+            thing on the page and are already in view, so whileInView buys
+            nothing — and it would gate the org's own numbers behind
+            requestAnimationFrame, which a background tab pauses. Dashboard data
+            should never need JS to have run to be readable. */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {stats.map((stat) => (
-            <Card key={stat.label}>
-              <CardContent className="flex flex-col gap-3 p-5">
+          {stats.map((stat, i) => (
+            <Card
+              key={stat.label}
+              className="h-full motion-safe:animate-rise-in"
+              style={{ animationDelay: `${i * 70}ms` }}
+            >
+              <CardContent className="flex h-full flex-col gap-3 p-5">
                 {/* Reserve two lines for the label. These cards sit in one grid
                     row, so a label that wraps ("Active recurring donors" does at
                     lg) pushed only that card's number down and broke the baseline
@@ -164,6 +178,12 @@ export default async function DashboardPage() {
                 </div>
                 {stat.delta && (
                   <p className="-mt-2 text-xs text-muted-foreground">{stat.delta.label}</p>
+                )}
+                {stat.series && stat.series.some((n) => n > 0) && (
+                  <div className="mt-auto pt-2">
+                    <Sparkline data={stat.series} height={30} />
+                    <p className="mt-1 text-[11px] text-muted-foreground">Last 12 weeks</p>
+                  </div>
                 )}
               </CardContent>
             </Card>

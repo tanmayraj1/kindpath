@@ -101,7 +101,16 @@ export async function getOrgDashboard(orgId: string) {
       lastMonthStart.getTime() + (now.getTime() - monthStart.getTime())
     );
 
-    const [org, totalDonors, activeRecurring, receiptsIssued, raisedAgg, lastMonthAgg, recent, funds] =
+    // Twelve weekly buckets for the overview sparkline. One indexed aggregate
+    // that returns at most twelve rows — deliberately not the twelve-month
+    // report query, which this page doesn't need, and deliberately not "load the
+    // donations and bucket them in JS", which is what this file's report query
+    // had to be rewritten to stop doing (see getReportData). Everything in here
+    // shares withTenant's single 5s transaction, so an unbounded read is not a
+    // slow dashboard, it's a P2028 and no dashboard.
+    const trendSince = new Date(now.getTime() - 12 * 7 * 24 * 60 * 60 * 1000);
+
+    const [org, totalDonors, activeRecurring, receiptsIssued, raisedAgg, lastMonthAgg, recent, funds, trendRows] =
       await Promise.all([
         tx.organization.findUnique({ where: { id: orgId } }),
         tx.donor.count(),
@@ -129,7 +138,35 @@ export async function getOrgDashboard(orgId: string) {
           _sum: { amount: true },
           where: { status: "succeeded", receivedAt: { gte: monthStart } },
         }),
+        tx.$queryRaw<{ week: Date; total: number }[]>`
+          SELECT date_trunc('week', received_at) AS week,
+                 SUM(amount)::float8            AS total
+          FROM donations
+          WHERE status = 'succeeded' AND received_at >= ${trendSince}
+          GROUP BY 1
+          ORDER BY 1
+        `,
       ]);
+
+    // Fill the gaps: a week with no gifts must read as zero, not be missing —
+    // otherwise the sparkline silently compresses a quiet month out of view and
+    // a flat quarter looks like a busy one.
+    const byWeek = new Map(
+      trendRows.map((r) => {
+        const d = new Date(r.week);
+        return [`${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`, Number(r.total)];
+      })
+    );
+    const trend: number[] = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getTime() - i * 7 * 24 * 60 * 60 * 1000);
+      const monday = new Date(
+        Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - ((d.getUTCDay() + 6) % 7))
+      );
+      trend.push(
+        byWeek.get(`${monday.getUTCFullYear()}-${monday.getUTCMonth()}-${monday.getUTCDate()}`) ?? 0
+      );
+    }
 
     // resolve fund names for the breakdown
     const fundRows = await tx.fund.findMany();
@@ -142,6 +179,7 @@ export async function getOrgDashboard(orgId: string) {
         charityStatus: org?.charityStatus,
         onboardedAt: org?.onboardedAt ?? null,
       },
+      trend,
       stats: {
         raisedThisMonth: Number(raisedAgg._sum.amount ?? 0),
         raisedLastMonthSamePoint: Number(lastMonthAgg._sum.amount ?? 0),
