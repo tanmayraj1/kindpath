@@ -1,4 +1,3 @@
-import QRCode from "qrcode";
 import { ExternalLink, Download, CreditCard, Smartphone, Tablet } from "lucide-react";
 import { Topbar } from "@/components/dashboard/topbar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +7,7 @@ import { requireOrgUser } from "@/lib/auth/guards";
 import { assertFeature } from "@/lib/access";
 import { getOrg } from "@/lib/queries/org";
 import { cn } from "@/lib/utils";
+import { givingPageQr } from "@/lib/qr";
 
 export const metadata = { title: "Giving page & QR" };
 
@@ -18,13 +18,7 @@ export default async function GivingPage() {
   const slug = org?.slug ?? "";
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  const giveUrl = `${appUrl}/give/${slug}`;
-
-  const qrDataUrl = await QRCode.toDataURL(giveUrl, {
-    width: 640,
-    margin: 1,
-    color: { dark: "#4f46e5", light: "#ffffff" },
-  });
+  const { url: giveUrl, dataUrl: qrDataUrl } = await givingPageQr(slug);
 
   return (
     <>

@@ -18,6 +18,7 @@ import { cn, formatCAD } from "@/lib/utils";
 import { requireOrgUser } from "@/lib/auth/guards";
 import { getOrgDashboard } from "@/lib/queries/org-dashboard";
 import { countDeliveryFailures } from "@/lib/queries/comms";
+import { describeOrgGatewayCredentials } from "@/lib/payments/org-credentials";
 
 // Static rather than generateMetadata: the detail pages already load their
 // record inside a withTenant transaction, and Prisma calls are not deduped
@@ -43,10 +44,16 @@ export default async function DashboardPage() {
   // countDeliveryFailures existed with no caller. An undelivered tax receipt is
   // something the organization has to act on, so it belongs on the page they
   // actually open — not only on the communications page they may never visit.
-  const [data, undelivered] = await Promise.all([
+  const [data, undelivered, gateway] = await Promise.all([
     getOrgDashboard(session.orgId),
     countDeliveryFailures(session.orgId),
+    describeOrgGatewayCredentials(session.orgId),
   ]);
+  // "Set up" and "can receive money" are different facts. Onboarding can be
+  // finished with the gateway explicitly skipped, and a charity in that state
+  // must be told so on the page it actually opens — not discover it when the
+  // first month's donations never arrive.
+  const gatewayMissing = Boolean(data.org.onboardedAt) && !(gateway.configured && !gateway.error);
 
   // Delta vs the SAME point last month — full-last-month vs partial-this-month
   // would show every org "down" for most of every month. Only shown when last
@@ -118,11 +125,28 @@ export default async function DashboardPage() {
             <div>
               <p className="text-sm font-semibold">Finish setting up {data.org.name}</p>
               <p className="text-xs text-muted-foreground">
-                Add your receipt details, branding and plan — it takes about two minutes.
+                Add your receipt details, branding, plan and payment account — about three minutes.
               </p>
             </div>
             <Link href="/dashboard/onboarding" className={buttonVariants({ size: "sm" })}>
               Continue setup
+            </Link>
+          </div>
+        )}
+        {gatewayMissing && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/40 bg-warning/5 px-4 py-3">
+            <div>
+              <p className="text-sm font-semibold">
+                {gateway.error ? "Your payment gateway can't be read" : "You can't receive donations yet"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {gateway.error
+                  ? "Donations are being refused rather than sent to the wrong account. Reconnect your Stripe account."
+                  : `Donations on your giving page run on KindPath's platform account and do not settle to ${data.org.name}. Connect your Stripe account to receive money directly.`}
+              </p>
+            </div>
+            <Link href="/dashboard/settings#payments" className={buttonVariants({ size: "sm" })}>
+              Connect Stripe
             </Link>
           </div>
         )}

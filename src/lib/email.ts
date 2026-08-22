@@ -7,6 +7,8 @@
  * as genuinely delivered when nothing left the building. `RESEND_API_KEY` is a
  * hard production requirement (src/lib/env.ts), so the fallback cannot run in prod.
  */
+import { BRAND_HEX } from "@/lib/brand";
+
 type SendInput = {
   to: string;
   subject: string;
@@ -115,7 +117,7 @@ const HEX6 = /^#?[0-9a-fA-F]{6}$/;
  * the pre-reskin indigo after the whole product moved to teal, which is exactly
  * the drift a named constant makes visible and a scattered literal does not.
  */
-const KINDPATH_BRAND = "#1F7A6D";
+const KINDPATH_BRAND = BRAND_HEX;
 
 export function brandHex(c?: string | null): string {
   return safeColor(c);

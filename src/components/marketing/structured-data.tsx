@@ -1,3 +1,5 @@
+import { PLANS, planPrice } from "@/lib/plans";
+
 const SITE = process.env.NEXT_PUBLIC_APP_URL ?? "https://www.kind-path.org";
 
 /**
@@ -59,31 +61,39 @@ export function StructuredData() {
           "CASL consent tracking",
           "QR code giving",
         ],
-        // Prices come from src/lib/plans.ts. If those change, change these —
-        // a stale price in structured data is a claim, not a cache.
-        offers: [
+        // Read from the catalog, not restated: this block used to hard-code the
+        // annual-billed per-month equivalents (24/49/166) as "monthly subscription"
+        // prices while src/lib/plans.ts billed 29/59/199 — a lower price than the
+        // one charged, asserted to search engines. Both cycles are listed, each
+        // labelled with its own billing increment.
+        offers: PLANS.flatMap((p) => [
           {
             "@type": "Offer",
-            name: "Starter",
-            price: "24",
+            name: `${p.name} (monthly)`,
+            price: String(planPrice(p.key, "monthly")),
             priceCurrency: "CAD",
-            category: "monthly subscription",
+            priceSpecification: {
+              "@type": "UnitPriceSpecification",
+              price: String(planPrice(p.key, "monthly")),
+              priceCurrency: "CAD",
+              billingIncrement: 1,
+              unitCode: "MON",
+            },
           },
           {
             "@type": "Offer",
-            name: "Community",
-            price: "49",
+            name: `${p.name} (annual)`,
+            price: String(planPrice(p.key, "annual")),
             priceCurrency: "CAD",
-            category: "monthly subscription",
+            priceSpecification: {
+              "@type": "UnitPriceSpecification",
+              price: String(planPrice(p.key, "annual")),
+              priceCurrency: "CAD",
+              billingIncrement: 1,
+              unitCode: "ANN",
+            },
           },
-          {
-            "@type": "Offer",
-            name: "Enterprise",
-            price: "166",
-            priceCurrency: "CAD",
-            category: "monthly subscription",
-          },
-        ],
+        ]),
       },
     ],
   };

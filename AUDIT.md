@@ -15,7 +15,7 @@ python3 scripts/audit.py > AUDIT.md && git diff --stat AUDIT.md
 A non-empty diff means the reskin changed behaviour, and that is a bug unless it
 was explicitly asked for.
 
-**73 pages.**
+**74 pages.**
 
 | Route | Links | Server actions | Submitted fields | Handlers |
 |---|---|---|---|---|
@@ -42,8 +42,9 @@ was explicitly asked for.
 | `/dashboard/funds` | — | `action`, `updateFund` | `code`, `name` | `document`, `nav` |
 | `/dashboard/giving` | — | — | — | `copy`, `document`, `nav` |
 | `/dashboard/memberships` | — | `action`, `updateCampaign`, `updateEvent`, `updateMembershipPlan`, `updatePledge`, `updateTeamMember`, `updateTicketType`, `updateVolunteer` | `amount`, `description`, `frequency`, `name`, `q` | `document`, `nav` |
-| `/dashboard/onboarding` | `/dashboard/onboarding?step=3` | `action` | `addressLine1`, `authorizedSignatory`, `charityStatus`, `city`, `craRegistrationNumber`, `cycle`, `logoUrl`, `plan`, `postalCode`, `primaryColor`, `province`, `receiptMessage` | `document`, `e`, `nav`, `setCycle`, `setPlan` |
-| `/dashboard` | `/dashboard/communications`, `/dashboard/donations/new`, `/dashboard/donors`, `/dashboard/onboarding` | — | — | `document`, `nav` |
+| `/dashboard/onboarding/done` | `/dashboard`, `/dashboard/settings#payments` | — | — | `copy`, `document`, `nav` |
+| `/dashboard/onboarding` | `/dashboard/onboarding?step=3` | `action`, `skipGatewayAndFinish` | `addressLine1`, `authorizedSignatory`, `charityStatus`, `city`, `craRegistrationNumber`, `cycle`, `logoUrl`, `plan`, `postalCode`, `primaryColor`, `province`, `receiptMessage` | `document`, `e`, `nav`, `setCycle`, `setPlan` |
+| `/dashboard` | `/dashboard/communications`, `/dashboard/donations/new`, `/dashboard/donors`, `/dashboard/onboarding`, `/dashboard/settings#payments` | — | — | `document`, `nav` |
 | `/dashboard/pledges` | — | `action`, `updateCampaign`, `updateEvent`, `updateMembershipPlan`, `updatePledge`, `updateTeamMember`, `updateTicketType`, `updateVolunteer` | `amount`, `campaignId`, `donorEmail`, `donorName`, `dueDate`, `note`, `q` | `document`, `nav` |
 | `/dashboard/receipts` | — | `action` | `q` | `document`, `e`, `nav`, `run` |
 | `/dashboard/recurring` | — | `action` | `q` | `document`, `nav` |

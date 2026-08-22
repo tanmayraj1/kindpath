@@ -23,7 +23,7 @@ export default async function SettingsPage() {
         {/* First, deliberately. Branding is cosmetic; this decides whether the
             org can receive money at all — and until now there was no org-facing
             way to set it. */}
-        <Card className="max-w-2xl">
+        <Card id="payments" className="max-w-2xl scroll-mt-6">
           <CardHeader>
             <CardTitle>Payments</CardTitle>
             <p className="text-sm text-muted-foreground">
