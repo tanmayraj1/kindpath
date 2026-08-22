@@ -1,5 +1,8 @@
 import { adminDb } from "@/lib/db";
-import { getPaymentProvider, UnsupportedWebhookEvent } from "@/lib/payments";
+import { getPaymentProvider, getPaymentProviderForOrg, UnsupportedWebhookEvent } from "@/lib/payments";
+import { verifyInboundWebhook } from "@/lib/payments/webhook-verify";
+import type { PaymentProvider } from "@/lib/payments/provider";
+import type { PaymentEvent } from "@/lib/payments/types";
 import { handlePaymentEvent } from "@/lib/payment-events";
 import { captureError, log } from "@/lib/observability";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
@@ -33,10 +36,26 @@ export async function POST(req: Request) {
   const headers: Record<string, string> = {};
   req.headers.forEach((v, k) => (headers[k] = v));
 
-  const provider = getPaymentProvider();
-  let event;
+  // Platform secret first, then the org's own gateway if the payload points at
+  // one — orgs that connect their own Stripe account get webhooks signed with
+  // THAT account's secret. See src/lib/payments/webhook-verify.ts.
+  let provider: PaymentProvider = getPaymentProvider();
+  let event: PaymentEvent;
   try {
-    event = await provider.verifyWebhook({ headers, body });
+    ({ event, provider } = await verifyInboundWebhook(
+      { headers, body },
+      {
+        platform: getPaymentProvider,
+        forOrg: getPaymentProviderForOrg,
+        orgIdForChargeRef: async (ref) =>
+          (
+            await adminDb.donation.findFirst({
+              where: { providerChargeRef: ref },
+              select: { orgId: true },
+            })
+          )?.orgId ?? null,
+      }
+    ));
   } catch (e) {
     const message = e instanceof Error ? e.message : "verification failed";
 

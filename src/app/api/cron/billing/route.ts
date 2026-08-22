@@ -3,6 +3,7 @@ import { runSubscriptionCycle } from "@/lib/subscriptions";
 import { captureError, log } from "@/lib/observability";
 import { startJobRun, finishJobRun } from "@/lib/job-runs";
 import { requireCronAuth } from "@/lib/cron-auth";
+import { purgeExpiredLoginCodes } from "@/lib/auth/login-code";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,6 +42,15 @@ async function handle(req: Request) {
   } catch (e) {
     captureError(e, { source: "cron.billing.subscriptions" });
     result.errors.push("subscription cycle failed");
+  }
+
+  // Housekeeping that rides on the daily tick. Expired sign-in codes are
+  // already unusable (consume checks expiresAt), so this is hygiene, not
+  // security — and a failure here must not mark billing as failed.
+  try {
+    await purgeExpiredLoginCodes();
+  } catch (e) {
+    captureError(e, { source: "cron.billing.purgeLoginCodes" });
   }
 
   const ok = result.errors.length === 0;
