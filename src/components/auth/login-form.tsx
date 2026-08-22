@@ -51,6 +51,22 @@ export function LoginForm({ next }: { next?: string }) {
       <SubmitButton size="lg" className="mt-2 w-full">
         Sign in
       </SubmitButton>
+
+      {/* Passwordless alternative, offered on the password form rather than
+          buried in the footer: the donor who needs it is the one who has just
+          discovered they don't have a password, and this is where they find out.
+          `next` is forwarded so a deep link survives the detour. */}
+      <div className="flex items-center gap-3 pt-1 text-xs text-muted-foreground">
+        <span className="h-px flex-1 bg-border" aria-hidden />
+        or
+        <span className="h-px flex-1 bg-border" aria-hidden />
+      </div>
+      <Link
+        href={next ? `/login/code?next=${encodeURIComponent(next)}` : "/login/code"}
+        className="text-center text-sm font-medium text-brand-600 hover:underline"
+      >
+        Email me a sign-in code instead
+      </Link>
     </form>
   );
 }

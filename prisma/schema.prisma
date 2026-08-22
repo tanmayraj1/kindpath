@@ -188,6 +188,34 @@ model PlatformAdmin {
 /// `orgId` is deliberately named org_id: the catalog-driven RLS in
 /// prisma/sql/rls.sql then protects this table automatically. All reads/writes
 /// go through adminDb (reset happens before any tenant context exists).
+/**
+ * A single-use sign-in code emailed to a donor or volunteer.
+ * Keyed by EMAIL, not by principal — unlike PasswordResetToken, which targets one
+ * row. A donor may hold accounts at several organizations under one address, and
+ * the code proves control of that inbox, so one code legitimately unlocks all of
+ * them; verification then routes through the same account chooser the password
+ * path uses. Issuing per-account would mean mailing three codes for one sign-in.
+ * `attemptCount` is the real brute-force ceiling. The Redis rate limiter fails
+ * OPEN on error by design (see rate-limit.ts), which is tolerable for a form post
+ * and not tolerable for a six-digit credential — a counter on the row cannot
+ * silently become a no-op.
+ * No org_id: this is consulted before any tenant context exists, and adding the
+ * column would pull the table into the catalog-driven RLS policy in prisma/sql/rls.sql.
+ */
+model LoginCode {
+  id           String    @id @default(uuid())
+  /// Lowercased at write time; the lookup is exact, not case-insensitive.
+  email        String
+  codeHash     String    @map("code_hash")
+  expiresAt    DateTime  @map("expires_at")
+  usedAt       DateTime? @map("used_at")
+  attemptCount Int       @default(0) @map("attempt_count")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@index([email, usedAt])
+  @@map("login_codes")
+}
+
 model PasswordResetToken {
   id          String    @id @default(uuid())
   principal   String

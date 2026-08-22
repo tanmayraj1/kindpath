@@ -15,7 +15,7 @@ python3 scripts/audit.py > AUDIT.md && git diff --stat AUDIT.md
 A non-empty diff means the reskin changed behaviour, and that is a bug unless it
 was explicitly asked for.
 
-**72 pages.**
+**73 pages.**
 
 | Route | Links | Server actions | Submitted fields | Handlers |
 |---|---|---|---|---|
@@ -24,6 +24,7 @@ was explicitly asked for.
 | `/forgot` | `/login` | `formAction` | `email` | — |
 | `/login/2fa` | `/login` | `formAction` | `code` | — |
 | `/login/choose` | — | `formAction` | `account`, `email` | — |
+| `/login/code` | `/login` | `requestAction`, `verifyAction` | `code`, `email`, `next` | `e` |
 | `/login` | `/claim`, `/forgot`, `/signup` | `formAction` | `email`, `next`, `password` | — |
 | `/reset` | `/forgot`, `/login` | `formAction` | `confirm`, `password`, `token` | — |
 | `/signup` | `/login` | `formAction` | `email`, `name`, `org`, `password` | — |

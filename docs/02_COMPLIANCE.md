@@ -87,6 +87,15 @@ plus per-channel (email/SMS) unsubscribe flags.
   notification, privacy-by-default. If serving Quebec orgs, this governs.
 - **Data residency:** host the database and backups in a **Canadian region**. Keep PII
   encrypted at rest and in transit.
+- **Residency caveat — email delivery is NOT in-region today.** Storage is Canadian
+  (Neon) and compute is pinned to `yul1` via `vercel.json`, but the Resend sending
+  domain currently sits in **ap-northeast-1 (Tokyo)**. Every official receipt carries
+  the donor's name and full mailing address, because §1 requires those fields — so
+  donor PII transits an Asia-Pacific region on the way out. This is written down
+  rather than glossed because a charity's board relies on this document, and an
+  overstated residency claim is worse than a narrower true one. **Move the Resend
+  domain to a North American region before onboarding any Quebec organization**, and
+  delete this paragraph when that is done.
 - **Donor rights:** support data export and deletion requests (deletion subject to CRA
   retention — see §5; receipts are retained even if the donor profile is anonymized).
 
@@ -132,6 +141,6 @@ Registered charities must keep records to support receipts. KindPath therefore:
 | Refund cancellation (§1.5) | Webhook → void receipt → audit log |
 | Registered-only receipts | `organizations.charity_status` gate |
 | CASL (§2) | `donors.casl_*` fields + send-time consent check |
-| Law 25 / residency (§3) | Canadian-region hosting, encryption, export/delete |
+| Law 25 / residency (§3) | Canadian-region hosting, encryption, export/delete — **email delivery is not yet in-region; see §3** |
 | GST/HST (§4) | Subscription invoice tax engine |
 | Retention (§5) | Soft-delete + immutable audit log |

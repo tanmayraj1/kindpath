@@ -11,6 +11,7 @@ import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { verifyTotp } from "@/lib/auth/totp";
 import { isLocked, lockMinutesRemaining, registerFailure, registerSuccess } from "@/lib/auth/lockout";
 import { issueResetToken, consumeResetToken, resetUrl } from "@/lib/auth/password-reset";
+import { issueLoginCode, consumeLoginCode, normalizeEmail } from "@/lib/auth/login-code";
 import { findCandidates, withPassword, type Candidate } from "@/lib/auth/candidates";
 import { safeNext } from "@/lib/auth/portals";
 import {
@@ -139,6 +140,130 @@ export async function loginAction(
   // only now, because the password has already been proven against each of them.
   await createAccountTicket(
     verified.map((c) => ({ kind: c.kind, id: c.id })),
+    next
+  );
+  redirect("/login/choose");
+}
+
+// ---------------- PASSWORDLESS SIGN-IN (EMAIL CODE) ----------------
+
+/**
+ * Which principals may sign in with an emailed code.
+ *
+ * Donors and volunteers only, and that is a security boundary rather than a
+ * product choice: a code is exactly as strong as the recipient's inbox, and an
+ * org admin can void official tax receipts, cancel a donor's recurring gift and
+ * mass-email every donor on file. Those accounts keep password + TOTP.
+ *
+ * A code never REPLACES a password. An existing donor password keeps working —
+ * this is a second door, and removing the first would strand anyone mid-flow.
+ */
+const CODE_ELIGIBLE: SessionClaims["kind"][] = ["donor", "volunteer"];
+
+const codeRequestSchema = z.object({ email: z.string().email("Enter a valid email") });
+
+/** Said whatever happens, so the response can't be used to test whether an address is on file. */
+const CODE_SENT = "If that address is on file, a sign-in code is on its way.";
+
+export type CodeState = { error?: string; sent?: boolean };
+
+export async function requestLoginCodeAction(
+  _prev: CodeState,
+  formData: FormData
+): Promise<CodeState> {
+  const parsed = codeRequestSchema.safeParse({ email: formData.get("email") });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  const email = normalizeEmail(parsed.data.email);
+
+  // Two limits, and they guard different things. Per-IP stops one host walking a
+  // list of addresses; per-email stops a botnet mail-bombing one donor's inbox,
+  // which the IP limit cannot see. Both fail open (see rate-limit.ts) — the real
+  // brute-force ceiling is attemptCount on the row.
+  if (!(await rateLimit(`login-code:ip:${clientIp()}`, 10, 60_000)).ok) {
+    return { error: "Too many requests. Please wait a minute." };
+  }
+  if (!(await rateLimit(`login-code:email:${email}`, 5, 15 * 60_000)).ok) {
+    return { sent: true };
+  }
+
+  const candidates = (await findCandidates(email)).filter((c) => CODE_ELIGIBLE.includes(c.kind));
+
+  // No eligible account: return the same message, having done the same work. An
+  // org admin's address lands here too, so the response cannot be used to sort
+  // staff addresses from donor ones.
+  if (candidates.length === 0) return { sent: true };
+
+  const { code } = await issueLoginCode(email);
+
+  const result = await sendEmailWithRetry({
+    to: email,
+    subject: `${code} is your KindPath sign-in code`,
+    html: emailLayout({
+      heading: "Your sign-in code",
+      body: `<p>Enter this code to sign in. It expires in 10 minutes.</p>
+             <p style="font-size:32px;font-weight:700;letter-spacing:6px;margin:24px 0">${escapeHtml(code)}</p>
+             <p>If you didn't ask for this, you can ignore this email — nothing has changed on your account.</p>`,
+    }),
+  });
+  if (!result.ok) {
+    captureError(new Error(result.error), { source: "auth.requestLoginCode" });
+    return { error: "We couldn't send the code just now. Please try again shortly." };
+  }
+
+  return { sent: true };
+}
+
+const codeVerifySchema = z.object({
+  email: z.string().email(),
+  code: z.string().min(1, "Enter the 6-digit code"),
+});
+
+export async function verifyLoginCodeAction(
+  _prev: CodeState,
+  formData: FormData
+): Promise<CodeState> {
+  const next = typeof formData.get("next") === "string" ? String(formData.get("next")) : null;
+  const parsed = codeVerifySchema.safeParse({
+    email: formData.get("email"),
+    code: formData.get("code"),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  const email = normalizeEmail(parsed.data.email);
+
+  if (!(await rateLimit(`login-code-verify:${clientIp()}`, 20, 60_000)).ok) {
+    return { error: "Too many attempts. Please wait a minute." };
+  }
+
+  const outcome = await consumeLoginCode(email, parsed.data.code);
+  if (!outcome.ok) {
+    if (outcome.reason === "expired") {
+      return { error: "That code has expired. Request a new one." };
+    }
+    if (outcome.reason === "too_many_attempts") {
+      return { error: "Too many incorrect attempts. Request a new code." };
+    }
+    return { error: "That code isn't right. Check it and try again." };
+  }
+
+  // Re-resolve AFTER the code verifies rather than trusting anything carried
+  // through the form, so an erasure or a disable between the two steps still
+  // takes effect — the same reason chooseAccountAction re-reads the account.
+  const candidates = (await findCandidates(email)).filter((c) => CODE_ELIGIBLE.includes(c.kind));
+  if (candidates.length === 0) {
+    return { error: "That account is no longer available." };
+  }
+
+  await Promise.all(candidates.map((c) => registerSuccess(c.kind, c.id, c.account)));
+
+  if (candidates.length === 1) {
+    await completeLogin(candidates[0], next);
+  }
+
+  // Same address at more than one organization. The chooser is safe here for the
+  // same reason it is on the password path: possession of the inbox has already
+  // been proven against every one of these rows.
+  await createAccountTicket(
+    candidates.map((c) => ({ kind: c.kind, id: c.id })),
     next
   );
   redirect("/login/choose");
