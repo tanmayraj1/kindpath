@@ -2,6 +2,7 @@ import { db, adminDb } from "@/lib/db";
 import { captureError } from "@/lib/observability";
 import { getJobHealth, STALE_AFTER_HOURS } from "@/lib/job-runs";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { platformGatewayHealth } from "@/lib/payments/platform-health";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,6 +57,15 @@ export async function GET() {
     billing = { stale: true, error: "could not read job heartbeat" };
   }
 
-  const ok = !billing.stale;
-  return Response.json({ ok, db: "up", dbLatencyMs, billing, ...base }, { status: ok ? 200 : 503 });
+  // The platform gateway is what every org without its own account charges
+  // through. A key that boots but cannot take CAD (wrong-country account) is
+  // "down" for donations even though every page renders.
+  const payments = await platformGatewayHealth();
+  const paymentsBroken = payments.checked && !payments.ok;
+
+  const ok = !billing.stale && !paymentsBroken;
+  return Response.json(
+    { ok, db: "up", dbLatencyMs, billing, payments, ...base },
+    { status: ok ? 200 : 503 }
+  );
 }

@@ -9,7 +9,10 @@
 - Production is up: `GET https://www.kind-path.org/api/ready` → `{"ready":true}`.
 - Apex `kind-path.org` 308s to `www` (canonical host settled at the edge).
 - Payments: `PAYMENT_PROVIDER=stripe` with a **sandbox (test-mode) key** from a
-  borrowed account as the platform default — see "Before the first real charity".
+  borrowed account as the platform default. **That account is registered in India and
+  cannot take CAD — every donation on production currently fails at Checkout creation**
+  ("The payment service is unavailable"). `/api/health` now reports it
+  (`payments.ok=false, country=IN`). Fix = a Canadian Stripe account's key; see §2 and §6.
 - Email: Resend, domain verified, region **ap-northeast-1 (Tokyo)** — see the
   residency caveat below.
 - `/api/health` may report 503 with `billing.stale=true` on a fresh deploy. That is
@@ -50,7 +53,9 @@ downgrade to Sending-only if it isn't already.
   `charge.refunded`, `refund.created`. The "Selected events" tab is a review list,
   not a picker — use "All events" + search. Test and live endpoints have
   **separate** signing secrets; create the endpoint inside the sandbox.
-- Verify the key with `GET /v1/balance` (expect `livemode:false` for a sandbox key).
+- Verify the key with `GET /v1/balance` (expect `livemode:false` for a sandbox key) **and**
+  `GET /v1/account` → `country` must be `CA`. The India-registered sandbox passed the first
+  and failed every charge; the connect form and `/api/health` now check the second.
 
 ## 3. Vercel environment (Production)
 
@@ -119,9 +124,12 @@ is two common words and depends on backlinks and time, not on code.
 - [ ] The charity connects **its own live** Stripe key in Settings → Payments (or
       onboarding step 4) and adds the webhook endpoint in its live mode
       (`docs/13_PAYMENT_GATEWAYS.md` §4).
-- [ ] Platform `STRIPE_SECRET_KEY` swapped from the borrowed sandbox key to
-      KindPath's own account (live or test — it is only the fallback for orgs
-      that skipped the gateway, and the dashboard tells them so).
+- [ ] **Platform `STRIPE_SECRET_KEY` replaced with a key from a *Canadian* Stripe account**
+      (KindPath's own; test mode is fine to start). The current India-registered sandbox
+      key cannot take CAD at all — until this is done *no* donation on the site succeeds,
+      including the platform-fallback path new orgs land on. Then replace
+      `STRIPE_WEBHOOK_SECRET` with that account's endpoint secret and redeploy;
+      `/api/health` → `payments.ok:true, country:"CA"`.
 - [ ] Resend domain moved to a North American region if the charity is in Quebec;
       `docs/02_COMPLIANCE.md` §3 updated.
 - [ ] Resend API key rotated (screenshot exposure).

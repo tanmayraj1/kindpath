@@ -59,6 +59,12 @@ redirect a charity's money.
 2. **Live probe before storing**: `GET https://api.stripe.com/v1/balance` with the
    key. Rejected → nothing stored, field error. (Storing an unverified key means the
    org believes it is connected and finds out at a donor's declined card.)
+2b. **Account country must be `CA`** (`GET /v1/account`, `src/lib/payments/stripe-account.ts`).
+   A working key is not enough: the first production key was from an account registered
+   in **India**, whose balance probe passed and whose every CAD Checkout then failed with
+   "only registered Indian businesses … can accept international payments". Non-Canadian
+   accounts are refused with that explanation. `/api/health` runs the same check on the
+   **platform** key (`src/lib/payments/platform-health.ts`, cached 10 min) and reports 503.
 3. `saveOrgGatewayCredentials` → `invalidateOrgProvider(orgId)` (drops the memoised
    adapter) → audit → `revalidatePath` for settings and dashboard.
 4. The form clears the secret field on success — the UI promises the key is never

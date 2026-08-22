@@ -20,6 +20,9 @@ entries are per behaviour change, not per commit. Dates are when the change reac
   receipt. (`734d305`)
 - Docs: `12_ONBOARDING`, `13_PAYMENT_GATEWAYS`, `14_AUTHENTICATION`, `15_GO_LIVE_RUNBOOK`,
   `help/GETTING_STARTED`, this changelog.
+- Stripe connect refuses accounts not registered in Canada (`/v1/account` country check), and
+  `/api/health` reports the platform key's account country — found because the first production
+  key was an India-registered sandbox that passed the balance probe and failed every CAD Checkout.
 
 ### Changed
 - Onboarding enforces step order: `?step=2–4` redirect to step 1 until the address is saved;

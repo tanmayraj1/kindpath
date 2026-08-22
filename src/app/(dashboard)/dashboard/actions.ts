@@ -1748,6 +1748,20 @@ export async function connectStripeAccount(
     };
   }
 
+  // Working is not enough: the account must be one CAD donations can settle
+  // to. The first production key passed the balance probe and then refused
+  // every Checkout because the account was registered in India — see
+  // src/lib/payments/stripe-account.ts.
+  const { assessStripeAccount } = await import("@/lib/payments/stripe-account");
+  const acctRes = await fetch("https://api.stripe.com/v1/account", {
+    headers: { Authorization: `Bearer ${parsed.data.secretKey}` },
+  }).catch(() => null);
+  const acct = acctRes && acctRes.ok ? ((await acctRes.json()) as { country?: string }) : {};
+  const assessed = assessStripeAccount(acct);
+  if (!assessed.ok) {
+    return { error: assessed.reason, fields: { secretKey: "Account is not Canadian" } };
+  }
+
   const { saveOrgGatewayCredentials } = await import("@/lib/payments/org-credentials");
   const { invalidateOrgProvider } = await import("@/lib/payments");
 
@@ -1766,7 +1780,7 @@ export async function connectStripeAccount(
     entityId: session.orgId,
     // The mode, not the key. Which account it is matters for support; the secret
     // must never reach the audit log.
-    after: { liveMode: parsed.data.secretKey.startsWith("sk_live_") },
+    after: { liveMode: parsed.data.secretKey.startsWith("sk_live_"), country: assessed.country },
     ip: clientIp(),
   });
 
