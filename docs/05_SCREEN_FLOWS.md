@@ -52,8 +52,9 @@ Notation: `→` navigation, `⟳` async/job, `⚑` compliance-critical.
 → match existing donor; refund later → receipt auto-voided.
 
 ### A1. Donor registration / login
-Email + password, OTP verification, password reset, optional Google login → Donor dashboard.
-First-time donors created during A0 can claim their account via the receipt email.
+**As built (see [14_AUTHENTICATION.md](14_AUTHENTICATION.md)):** `/login` (password) or `/login/code` (emailed
+6-digit code, donors/volunteers only); `/login/choose` when the address exists at more than one org;
+`/claim` to set a password from a receipt email; `/forgot` → `/reset`. No Google login, no SMS OTP.
 
 ### A2. Donor dashboard (home)
 Summary cards: total given (year + lifetime), active recurring plans, next billing date,
@@ -137,7 +138,9 @@ See [Dashboards](06_DASHBOARDS.md#1-platform-super-admin-dashboard). Platform-wi
 
 ### C2. Organization management
 List all orgs (status, plan, donors, volume, MRR). Create org (name, slug/subdomain, branding,
-**charity status + BN/RR**, POS credentials → secret store). Edit / suspend / archive (archive =
+**charity status + BN/RR**). Payment credentials are **not** entered here: each org connects its
+own gateway in its dashboard (see [13_PAYMENT_GATEWAYS.md](13_PAYMENT_GATEWAYS.md)); God Mode only shows
+the key tail / mode. Edit / suspend / archive (archive =
 retention-safe, never hard delete ⚑).
 
 ### C3. Subscription management
@@ -153,8 +156,10 @@ Impersonate an org admin (**fully audited**, time-boxed), view error/webhook log
 trigger failed-payment retries, reset donor passwords, replay webhooks.
 
 ### C6. Onboarding flow
-Manual (admin creates) or self-serve (org signs up → provides name/logo/slug/charity status/POS
-creds → KindPath verifies → activates). Configurable.
+**Decided and built — self-serve, org-side.** `/signup` → `/dashboard/onboarding` steps 1–4
+(Organization & receipts → Branding → Plan → **Get paid**) → `/dashboard/onboarding/done`.
+`onboardedAt` is set only when a gateway is connected or the admin explicitly confirms skipping;
+the dashboard then says "you can't receive donations yet". Full detail: [12_ONBOARDING.md](12_ONBOARDING.md).
 
 ---
 

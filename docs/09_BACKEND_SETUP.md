@@ -43,7 +43,13 @@ npm run dev            # http://localhost:3000
 | `ADMIN_DATABASE_URL` | Superuser connection. Migrations, seeding, auth lookups, platform/global ops. |
 | `AUTH_SECRET` | HMAC key for signing session JWTs. |
 | `AUTH_COOKIE` | Session cookie name. |
-| `PAYMENT_PROVIDER` | `mock` (default). Set to your POS adapter key later. |
+| `PAYMENT_PROVIDER` | `mock` / `mock-hosted` locally. **Production refuses both** (`src/lib/env.ts`); use `stripe` or `wevend`. |
+| `CREDENTIALS_KEY` | Encrypts per-org gateway credentials. Falls back to `AUTH_SECRET` locally only. |
+| `RESEND_API_KEY`, `EMAIL_FROM` | Empty locally → emails are printed to the console (`simulated: true`). |
+| `UPSTASH_REDIS_REST_URL/TOKEN` | Rate limiter; in-memory Map when unset (fine locally, not on Vercel). |
+
+> This table is the **local** minimum. The complete, authoritative list is `.env.example` and
+> [10_DEPLOYMENT.md](10_DEPLOYMENT.md) §5 (production) — do not maintain a third copy here.
 
 ## 4. Seeded login credentials (password: `Password123!`)
 | Role | Email | Lands on |
@@ -66,6 +72,9 @@ npm run dev            # http://localhost:3000
 > the active org's rows once `app.current_org_id` is set — even though the DB holds multiple orgs.
 
 ## 6. Auth model
+
+> Superseded by [14_AUTHENTICATION.md](14_AUTHENTICATION.md) (four principals, TOTP, emailed codes, `/login/choose`). The notes below describe only the original password path.
+
 - Single session cookie (HTTP-only, signed JWT) for all three principal types; `kind` claim
   (`platform` | `org` | `donor`) routes to the right portal.
 - `src/lib/auth/`: `password.ts` (bcrypt), `jwt.ts` (jose HS256), `session.ts` (cookie),
@@ -74,6 +83,9 @@ npm run dev            # http://localhost:3000
 - Login/signup are server actions in `src/app/(auth)/actions.ts`.
 
 ## 7. Payment abstraction (your POS plugs in here)
+
+> Superseded by [13_PAYMENT_GATEWAYS.md](13_PAYMENT_GATEWAYS.md). Stripe and WeVend adapters exist; orgs connect their own accounts. The sketch below is the original interface description.
+
 - `src/lib/payments/provider.ts` — the `PaymentProvider` interface (the only seam).
 - `src/lib/payments/mock-adapter.ts` — in-memory simulator (charges ending in `.01` decline,
   so failed-payment/retry flows are testable). No network.

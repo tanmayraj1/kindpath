@@ -4,7 +4,7 @@ Recommended stack (simplest path, Canadian-friendly):
 - **App host:** Vercel (native Next.js)
 - **Database:** Neon Postgres — region **AWS `ca-central-1` (Montréal)** for Law 25 residency
 - **Email:** Resend (verified domain)
-- **Payments:** your POS adapter — see §8. *The app currently uses the MockAdapter; real money requires the real adapter.*
+- **Payments:** Stripe (live adapter) as the platform default; each org connects its own Stripe account — see [13_PAYMENT_GATEWAYS.md](13_PAYMENT_GATEWAYS.md). Mock is refused in production (§5).
 
 > ⚠️ Before taking REAL donations: have a Canadian charity lawyer review the receipt template,
 > wire the real payment adapter, and complete the §9 checklist.
@@ -63,6 +63,11 @@ Do **not** run `npm run db:seed` in production (that's demo data).
 1. Create a Resend account, **verify your sending domain** (DNS records).
 2. Create an API key → `RESEND_API_KEY`.
 3. Set `EMAIL_FROM="KindPath <receipts@yourdomain.com>"` (must be on the verified domain).
+4. **Region.** Pick a North American region when creating the domain. The current production domain is in
+   **ap-northeast-1 (Tokyo)** — receipts carry donor PII and transit Asia-Pacific; see
+   [02_COMPLIANCE.md](02_COMPLIANCE.md) §3 and [15_GO_LIVE_RUNBOOK.md](15_GO_LIVE_RUNBOOK.md) §1. Move it before
+   onboarding a Quebec organization.
+5. Scope the API key to **Sending** only.
 
 ## 5. Deploy on Vercel
 1. vercel.com → **Add New → Project → import your GitHub repo**. Framework auto-detects Next.js.
@@ -79,6 +84,8 @@ Do **not** run `npm run db:seed` in production (that's demo data).
 | `EMAIL_FROM` | `KindPath <receipts@yourdomain.com>` |
 | `CONTACT_TO` | where demo requests go, e.g. `sales@yourdomain.com` |
 | `PAYMENT_PROVIDER` | **`stripe` or `wevend`** — see the warning below |
+| `STRIPE_SECRET_KEY` | when `stripe`: `sk_live_…` (or `sk_test_…` — warns at boot); **shape is validated**, a pasted placeholder is rejected by name |
+| `STRIPE_WEBHOOK_SECRET` | when `stripe`: `whsec_…` of the endpoint at `/api/webhooks/pos`; test and live endpoints have different secrets |
 | `CRON_SECRET` | a random secret (Vercel cron sends it automatically) |
 | `CREDENTIALS_KEY` | **required.** Encrypts each org's gateway credentials |
 | `UPSTASH_REDIS_REST_URL` | **required on Vercel** — see the warning below |
@@ -154,17 +161,28 @@ producing a running site against a stale database.
 Vercel → **Settings → Domains** → add `yourdomain.com`, set the DNS records Vercel shows. SSL is automatic.
 Update `NEXT_PUBLIC_APP_URL` to the final domain and redeploy.
 
-## 8. Wire real payments (when ready for real money)
-Implement `PaymentProvider` for your POS in `src/lib/payments/your-pos-adapter.ts`, register it in
-`src/lib/payments/index.ts` under a new `PAYMENT_PROVIDER` value, and set that env var. No other code changes.
-Use the gateway's **hosted fields** so card data never touches the server (keeps PCI scope minimal).
+## 8. Real payments
+The adapters exist (`src/lib/payments/stripe-adapter.ts`, `wevend-adapter.ts`). The platform default is
+`PAYMENT_PROVIDER` + its keys; **each organization connects its own Stripe account** from Settings → Payments
+or onboarding step 4, and that is where its donations settle. Everything about credentials, test vs live,
+and webhooks per org is in [13_PAYMENT_GATEWAYS.md](13_PAYMENT_GATEWAYS.md). Adding a new gateway is still
+"implement `PaymentProvider`, register it in `src/lib/payments/index.ts`".
+
+## 8a. After deploy
+```bash
+curl -s https://yourdomain.com/api/ready      # {"ready":true} or the list of missing names
+curl -s https://yourdomain.com/api/health     # 503 with billing.stale=true is EXPECTED until the first 09:00 UTC cron run
+```
+Then: Google Search Console → add the domain property → submit `https://yourdomain.com/sitemap.xml`.
+The full narrative of the real go-live, including the traps, is [15_GO_LIVE_RUNBOOK.md](15_GO_LIVE_RUNBOOK.md).
 
 ## 9. Pre-launch checklist
 - [ ] Real super-admin created; demo accounts NOT seeded in prod
 - [ ] `AUTH_SECRET` / `CRON_SECRET` are fresh production values
 - [ ] Receipt template reviewed by a Canadian charity lawyer; org BN/RR numbers entered
-- [ ] Real payment adapter wired + tested in the gateway's sandbox
-- [ ] Resend domain verified; send a live test receipt
+- [ ] Stripe keys set and shape-valid (`/api/ready` green); webhook endpoint subscribed to the four events
+- [ ] Resend domain verified (North American region); send a live test receipt
+- [ ] Email-code sign-in (`/login/code`) delivers — it depends on email working
 - [ ] DB automated backups enabled (Neon: PITR)
 - [ ] Error monitoring (e.g. Sentry) + uptime check
 - [ ] Test end-to-end on the live domain: donate → address → receipt PDF → appears in dashboards

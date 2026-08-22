@@ -35,6 +35,15 @@ once and consumed everywhere, so all three portals stay uniform. Edit tokens, no
 - **Card padding:** 24px (`p-6`) standard; 20px (`p-5`) for dense dashboard stat cards.
 
 ## 5. Radii & elevation
+
+> **Reskin addenda (Aug 2026).** Radii are now **role-named** in `tailwind.config.ts`: `rounded-card` (24px)
+> and `rounded-input` (14px) — a component says what it is, not how round it is. Elevation is
+> `shadow-soft` (resting) / `shadow-lift` (hover). Surfaces are **scopes**, not new class names:
+> `.surface-app` (dashboard) and `.surface-donor` (giving/portal) in `globals.css` re-point the same
+> `--brand-*` variables, so existing `bg-brand-600` / `text-brand-600` resolve per-surface with no
+> per-component edit. The one hand-mirrored hex is `BRAND_HEX` in `src/lib/brand.ts`, used wherever CSS
+> variables can't reach: email, PDF, QR, the Open Graph image.
+
 - **Radius token:** `--radius: 0.75rem`. Derived: `sm/md/lg/xl/2xl`. Cards use `rounded-2xl`,
   buttons/inputs `rounded-lg`, pills/badges `rounded-full`.
 - **Shadows:** soft, layered scale `shadow-xs…xl` plus `shadow-brand` (colored glow for primary

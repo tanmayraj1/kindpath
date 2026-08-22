@@ -44,12 +44,15 @@ tenant-isolation criteria are release-blocking.
 ## 6. Open items needing client input
 1. **POS API:** REST docs + sandbox creds for tokenize/charge/recurring/refund/webhooks (drives P1 → real adapter).
 2. **Receipt template & legal:** CRA-compliant sample, authorized signatory name + signature image, BN/RR numbers per pilot org.
-3. **Onboarding mode:** manual (admin-created) vs self-serve for MVP.
-4. **Hosting:** confirm Canadian region/provider (recommended for Law 25).
+3. ~~**Onboarding mode:** manual (admin-created) vs self-serve for MVP.~~ **Closed: self-serve; gateway required or explicitly skipped** ([12_ONBOARDING.md](12_ONBOARDING.md)).
+4. ~~**Hosting:** confirm Canadian region/provider.~~ **Closed: Vercel `yul1` + Neon `ca-central-1`**; email region still open ([15_GO_LIVE_RUNBOOK.md](15_GO_LIVE_RUNBOOK.md)).
 5. **Pilot orgs:** 1 registered charity + 1 non-registered org for realistic UAT.
-6. **Email/SMS providers:** confirm Resend + Twilio/MSG91 accounts.
+6. ~~**Email/SMS providers:** confirm Resend + Twilio/MSG91 accounts.~~ **Resend live; SMS dropped (nothing sends SMS).**
 
-## 7. Immediate next steps (when you give the go)
+> **Status (2026-08-23):** everything in §3 and §7 below is built and in production at
+> www.kind-path.org; this section is kept as the historical plan. See `CHANGELOG.md`.
+
+## 7. Immediate next steps (historical — done)
 1. Scaffold the repo (Next.js 14 + Tailwind + Prisma + PostgreSQL) with the 3-role auth shell.
 2. Implement RLS multi-tenancy + seed a registered + non-registered demo org.
 3. Build the `PaymentProvider` interface + MockAdapter.

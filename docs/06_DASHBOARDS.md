@@ -68,7 +68,7 @@ complete address, update CASL preferences.
 ## 4. How the portals connect (data flow)
 
 ```
-SUPER ADMIN ──creates/configures──► ORGANIZATION (tenant, charity status, branding, POS creds)
+SUPER ADMIN ──views/suspends────► ORGANIZATION (tenant; org connects its OWN gateway — see 13)
      ▲                                     │
      │ platform analytics                  │ defines funds, recurring plans, receipt settings
      │ (aggregates all orgs)               ▼
@@ -87,8 +87,8 @@ SUPER ADMIN ──creates/configures──► ORGANIZATION (tenant, charity stat
 
 **Connection points (single source of truth, viewed by multiple roles):**
 
-1. **Organization** is created by Super Admin → everything an Org Admin and its Donors see is
-   scoped to it. Charity status set here decides official-receipt vs confirmation everywhere.
+1. **Organization** is created by self-serve signup (see 12) and can be viewed/suspended by Super
+   Admin → everything an Org Admin and its Donors see is scoped to it. Charity status set here decides official-receipt vs confirmation everywhere.
 2. **Funds** defined by Org Admin → appear in the donor donation page dropdown and in org
    fund-wise reporting.
 3. **A donation** is one record viewed three ways: donor sees it in history; org admin sees it

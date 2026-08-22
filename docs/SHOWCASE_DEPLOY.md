@@ -62,7 +62,7 @@ psql "$ADMIN_DATABASE_URL" -c "SELECT count(*) FROM organizations;"
 | `AUTH_SECRET` | (generated — see chat) |
 | `AUTH_COOKIE` | `kindpath_session` |
 | `NEXT_PUBLIC_APP_URL` | set after first deploy to the real `https://…vercel.app`, then redeploy |
-| `PAYMENT_PROVIDER` | `mock` |
+| `PAYMENT_PROVIDER` | ~~`mock`~~ — **no longer deployable**: `src/lib/env.ts` refuses `mock`/`mock-hosted` whenever `NODE_ENV=production` (every Vercel build, previews included). Use `stripe` with a **sandbox** key + a test webhook secret for a showcase; `mock` only works under `next dev`. Real deployments: [10_DEPLOYMENT.md](10_DEPLOYMENT.md) |
 | `CRON_SECRET` | (generated — see chat) |
 | `CONTACT_TO` | your email (optional; demo-request form) |
 

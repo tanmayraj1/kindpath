@@ -41,13 +41,13 @@
 | Backend | Next.js API routes (+ extractable service layer) | Co-located; can split to a Node/Express service later |
 | Database | PostgreSQL + Row-Level Security | Strong relational integrity, RLS for tenant isolation, audit-friendly |
 | ORM | Prisma (or Drizzle) | Type-safe schema + migrations |
-| Auth | NextAuth.js / JWT + OTP | Multi-role login, RBAC, OTP verification |
+| Auth | **Custom** — jose HS256 JWT cookie, bcrypt, TOTP, emailed codes for donors (`src/lib/auth/`) | Four principals, RBAC, per-org identity — see [14_AUTHENTICATION.md](14_AUTHENTICATION.md). Not NextAuth. |
 | Jobs/scheduler | Cron worker (e.g. node-cron / BullMQ + Redis) | Recurring billing, retries, receipt + notification dispatch |
 | PDF | `@react-pdf/renderer` (or Puppeteer) | Server-side receipt/invoice PDFs |
 | Email | Resend | Transactional + marketing (with CASL controls) |
-| SMS | Twilio / MSG91 | Alerts and OTP |
-| Storage | S3-compatible (Canadian region) | Receipt/invoice PDFs, logos |
-| Hosting | Canadian-region cloud (AWS ca-central-1 / GCP montréal / Vercel + Cdn DB) | Law 25 residency |
+| SMS | — | **Not built.** No SMS provider; nothing sends SMS. Donor codes go by email. |
+| Storage | PDFs generated on demand (no object store); logos by URL | Receipt/invoice PDFs, logos |
+| Hosting | **Vercel `yul1` + Neon `ca-central-1`** (settled). Email egress via Resend currently **ap-northeast-1** — see 02 §3 | Law 25 residency (storage + compute); email not yet in-region |
 
 ## 3. Multi-tenancy model
 

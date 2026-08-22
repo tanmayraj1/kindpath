@@ -23,6 +23,21 @@ platform_admins                       organizations ──< org_users
 
 ## 2. Tables
 
+> **Scope note.** This section documents the original core. The schema has since grown
+> (campaigns, events, ticket types, memberships, pledges, volunteers, team members, job runs,
+> login codes, …). `prisma/schema.prisma` is the source of truth; only the additions that
+> change how the core behaves are recorded here.
+
+### login_codes (passwordless sign-in, donors/volunteers)
+| Column | Notes |
+|---|---|
+| email | lowercased; **no org_id** — the code is keyed by address and unlocks every account at it |
+| code_hash | sha256(`{email}:{code}`) — address bound into the digest |
+| expires_at / used_at | 10-min TTL; single use; superseded on re-issue |
+| attempt_count | 5 max, counted on the row (the rate limiter fails open) |
+See [14_AUTHENTICATION.md](14_AUTHENTICATION.md) §4.
+
+
 ### organizations (tenant root)
 | Column | Type | Notes |
 |--------|------|-------|
@@ -68,7 +83,7 @@ province, status(draft/sent/paid/void), issued_at, pdf_url` — this is the **co
 | casl_consent_at, casl_consent_source | timestamptz, text | |
 | email_marketing_opt_in, sms_marketing_opt_in | bool | Unsubscribe flags |
 | notes | text | Org-private |
-| auth fields | password_hash, otp, google_id | Donor self-service login |
+| auth fields | password_hash (nullable — donors are created by donating) | Donor self-service login; passwordless codes live in `login_codes` |
 
 ### donor_payment_methods (tokens only)
 `id, org_id, donor_id, provider_token, type(card/bank), brand, last4, exp_month, exp_year,

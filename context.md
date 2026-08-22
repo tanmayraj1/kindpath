@@ -1,6 +1,6 @@
 # KindPath — Project Context (handoff)
 
-> Continuation context so work can resume in a fresh chat. Written 2026-07-01.
+> Continuation context so work can resume in a fresh chat. Written 2026-07-01; **"Since 2026-08-22" section added 2026-08-23** — read it first, it supersedes older bullets where they conflict. `CHANGELOG.md` has the dated list.
 > Owner: Dhruv Dingra / Rytful Media. User building it: yashforcap@gmail.com.
 
 ## What this is
@@ -21,7 +21,8 @@ orgs issue **payment confirmations**. Split-receipting: `eligibleAmount = amount
 
 ## Tech stack
 - **Next.js 14.2.5** App Router + TypeScript + **Tailwind 3.4** (token-driven design system in
-  `src/app/globals.css` + `tailwind.config.ts`; brand = trust indigo, Sora display + Inter body).
+  `src/app/globals.css` + `tailwind.config.ts`; brand = **teal `#1F7A6D`** since the Aug reskin (was indigo —
+  `src/lib/brand.ts` is the one hand-mirrored hex), Sora display + Inter body; surface scopes per docs/08).
 - **PostgreSQL 16** in Docker (container `kindpath-pg`, host port **5433**) + **Prisma 6.19.3**.
 - **Auth**: custom JWT (jose HS256) single httpOnly cookie `kindpath_session` with a `kind` claim
   (`platform` | `org` | `donor` | `volunteer`); bcrypt passwords. NOT NextAuth. **2FA (TOTP)** for org
@@ -30,7 +31,7 @@ orgs issue **payment confirmations**. Split-receipting: `eligibleAmount = amount
   (`twofa-ticket.ts`) → `/login/2fa` challenge → full session. Enable/disable at `/dashboard/security`
   (QR enrol + 10 one-time recovery codes, hashed). Tested vs RFC vectors + full login/challenge flow.
 - **PDF**: `@react-pdf/renderer`. **QR**: `qrcode`. **Email**: Resend HTTP API (console fallback in dev).
-- Tests: **vitest** (`npm test`, 29 passing).
+- Tests: **vitest** (`npm test`, 196 passing as of 2026-08-23).
 
 ## Multi-tenancy + security (the important part)
 - **Two Prisma clients** in `src/lib/db.ts`: `db` (role `kindpath_app`, non-superuser, **RLS ENFORCED**,
@@ -104,6 +105,8 @@ real gateway); recurring-signup initial hosted sale to capture the token; decide
 reconciliation.
 
 ## Payment abstraction (client will plug in their POS "We Vend" later)
+> **Superseded in part** — see "Since 2026-08-22" below and `docs/13_PAYMENT_GATEWAYS.md`: Stripe is live in production, orgs connect their OWN Stripe accounts, and inbound webhooks verify per org.
+
 `src/lib/payments/`: `PaymentProvider` interface + `MockAdapter` (charges ending `.01` decline) +
 **`StripeAdapter`** (`stripe-adapter.ts`, raw REST via fetch, no SDK dep: PaymentIntents w/ idempotency
 keys, composite `cus|pm` tokens for stored methods, refunds by intent, HMAC-verified webhooks w/ replay
@@ -316,12 +319,10 @@ silently no-op'd), `Field` (aria-invalid + aria-describedby), `Skeleton`/`PageSk
 `SectionError`, `ListSearch`/`Pagination`, `src/lib/validation.ts` (all field errors, not `issues[0]`).
 
 ## NOT built yet / honest caveats
-- **Real payments**: `StripeAdapter` is built + unit-tested but needs `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET`
-  (test keys fine) to run live; frontend still lacks **Stripe Elements** (card fields), so real one-off charges
-  currently rely on the test-mode `pm_card_visa` bridge. **We Vend POS adapter** still needs API docs +
+- **Real payments**: Stripe adapter is **live in production** (platform default on a borrowed *sandbox* key — must be swapped before a real charity; see docs/15 §6). Hosted Checkout flow is what the giving page uses; the frontend still lacks **Stripe Elements** for the in-app card step, so the non-hosted one-off path relies on the test-mode `pm_card_visa` bridge. **We Vend POS adapter** still needs API docs +
   sandbox/prod keys + webhook secret. `/give`'s "POS (We Vend) mode" is a labelled link, not yet wired.
 - **AI chat** needs `ANTHROPIC_API_KEY` (falls back to deterministic basic-mode without it).
-- **Email** needs a Resend key + verified domain to actually send (logs to console in dev).
+- **Email** is live via Resend in production (domain in **ap-northeast-1** — move before any Quebec org; docs/02 §3). Console fallback in dev.
 - **`sendCampaign` still sends in-request** (now queued-first and resumable, but a large send can still
   exceed the Vercel function limit). Move to a queue/cron before a big list.
 - Donor self-service data export + anonymization (PIPEDA/Law 25) not built; org-level CSV export exists.
@@ -333,6 +334,31 @@ silently no-op'd), `Field` (aria-invalid + aria-describedby), `Skeleton`/`PageSk
   real SMS (Twilio/MSG91), lawyer review of receipt template + per-org
   BN/RR before issuing real official receipts, Neon PITR + a **tested** restore.
 - `/privacy` and `/terms` exist but are explicitly marked **drafts pending counsel** on the page itself.
+
+## Since 2026-08-22 — go-live, passwordless, org gateways, onboarding (read first)
+- **Production is live at https://www.kind-path.org** (`/api/ready` → `{"ready":true}`; apex 308s to www). Vercel `yul1`,
+  Neon `ca-central-1`, Resend (Tokyo region — residency caveat in docs/02 §3), Stripe **sandbox** key as the platform
+  default (borrowed account; swap before the first real charity — docs/15 §6). `/api/health` 503 `billing.stale` is
+  expected until the first 09:00 UTC cron. **Never rotate `AUTH_SECRET`** (sessions + signed receipt links).
+- **Passwordless email sign-in** for donors/volunteers at `/login/code` (`LoginCode` model, `src/lib/auth/login-code.ts`):
+  keyed by email → account chooser; 10-min TTL; 5 attempts counted on the row because `rateLimit()` fails open;
+  enumeration-safe. Staff keep password + TOTP. Firebase Auth was considered and rejected (email is unique per org). docs/14.
+- **Organizations connect their own Stripe account** (Settings → Payments and onboarding step 4): `connectStripeAccount`
+  probes `/v1/balance` before storing, seals with AES-GCM under `CREDENTIALS_KEY`, audits mode only, `requireOrgAdmin`.
+  `getPaymentProviderForOrg` prefers org creds, refuses on unreadable, falls back to platform only when none.
+  `/api/webhooks/pos` verifies with the platform secret, then the org's (located from `metadata.orgId` / the
+  donation's `providerChargeRef`) — `src/lib/payments/webhook-verify.ts`. docs/13.
+- **Onboarding is four steps** and `onboardedAt` is set only when a gateway is connected or the admin explicitly
+  confirms skipping (audited `org.onboarding.completed { gatewayConnected }`); step order enforced (address required);
+  BN stored normalized; done screen at `/dashboard/onboarding/done` with URL + QR + honest money statement; dashboard
+  banner "you can't receive donations yet" links to `/dashboard/settings#payments`. docs/12, docs/help/GETTING_STARTED.
+- **SEO**: `metadataBase`, canonical, OG/Twitter, generated `/opengraph-image`, JSON-LD (`alternateName` for
+  "Kind Path"/"kind-path"; offers read from `src/lib/plans.ts`), sitemap of rank-worthy pages. Search Console still to
+  be set up by the owner (docs/15 §5).
+- **Env**: `src/lib/env.ts` validates the *shape* of `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET`; `/api/ready` names
+  missing/invalid vars. Pasted placeholders were the real-world failure.
+- **Standing blockers**: WeVend merchant ID (`WV-ISV-50001`); Resend region move for Quebec; rotate the Resend key seen in a
+  screenshot; Stripe platform key is sandbox.
 
 ## Tier 0 security backtest (2026-07-08, PASSED)
 Adversarial pass over everything built in Tier 0. Results:

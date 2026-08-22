@@ -52,7 +52,7 @@ official receipts — CRA requires an authorized individual).
 | Subscription management | Plan tier, billing status, manual billing, credits/overrides, GST/HST handling |
 | Platform analytics | Active orgs, total donors, donation volume/value, MRR, churn |
 | Support tools | Impersonate org admin (audited), view logs, retry failed payments, reset donor passwords |
-| Onboarding flow | Org name, logo/colour, slug/subdomain, charity status, payment (POS) credentials |
+| Onboarding flow | *Built as self-serve on the org side, not here* — see [12_ONBOARDING.md](12_ONBOARDING.md). Super admin can view/suspend; payment credentials are connected by the org itself |
 
 ### 4.2 Organization Admin portal
 | Feature | Notes |
@@ -74,7 +74,7 @@ official receipts — CRA requires an authorized individual).
 ### 4.3 Donor self-service portal
 | Feature | Notes |
 |---|---|
-| Registration & login | Email/password + OTP; password reset; optional Google login |
+| Registration & login | Email/password **or emailed 6-digit code** (passwordless); password reset; `/claim` from a receipt email. No Google login — see [14_AUTHENTICATION.md](14_AUTHENTICATION.md) |
 | **Receipt detail capture** | Post-donation name + **address** capture (the donate→address→receipt flow) |
 | Donation history | Chronological, filterable; export PDF/CSV |
 | Recurring plan management | Pause / modify amount / change frequency / cancel — effective next cycle |
@@ -85,7 +85,7 @@ official receipts — CRA requires an authorized individual).
 ### 4.4 Payment & billing engine
 | Feature | Notes |
 |---|---|
-| Provider abstraction | `PaymentProvider` interface; **mock adapter now**, client POS adapter later; webhook handling + idempotency |
+| Provider abstraction | `PaymentProvider` interface; **Stripe adapter live**, WeVend adapter built (blocked on merchant ID), mock for dev only; per-org credentials; webhook handling + idempotency — see [13_PAYMENT_GATEWAYS.md](13_PAYMENT_GATEWAYS.md) |
 | Secure tokenization | Tokens stored, never raw PAN/bank data |
 | Automated recurring billing | Scheduled jobs per plan; configurable day/frequency/amount |
 | Failed payment retries | Configurable intervals; donor notified each retry; suspend after max |
@@ -104,7 +104,7 @@ integrations (QuickBooks/Xero/Salesforce/Mailchimp), donation terminal hardware.
 - **POS / Payment API:** REST docs + sandbox credentials for the tokenization, recurring billing, refund, and webhook events.
 - **Branding assets:** platform + per-org logos and colour palettes.
 - **Receipt template & legal:** sample CRA-compliant receipt format; authorized signatory name + signature image; charity BN/RR numbers.
-- **Onboarding decision:** manual (platform admin) vs self-serve org onboarding.
+- ~~**Onboarding decision:** manual (platform admin) vs self-serve org onboarding.~~ **Decided: self-serve** ([12_ONBOARDING.md](12_ONBOARDING.md)).
 - **Hosting:** confirm Canadian-region cloud provider (recommended for Law 25).
 - **UAT:** technical rep available; sign-off within agreed window.
 

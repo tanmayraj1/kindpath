@@ -72,10 +72,12 @@ Recommended default: **Epson TM-m30 (Wi-Fi) using ePOS-Print from the kiosk brow
 server printing infra, and the official PDF still goes by email.
 
 ## 7. Compliance / org onboarding data (per organization) — required to issue real receipts
-- [ ] Charity **legal name + address** as on file with the CRA
-- [ ] **CRA registration number** (`BN/RR`, e.g. `123456789 RR 0001`)
-- [ ] **Authorized signatory** name + a **signature image** (PNG, transparent)
-- [ ] Receipt locality (place issued) + logo + brand colour
+*Collected by the org itself in onboarding steps 1–2 and Settings (see [12_ONBOARDING.md](12_ONBOARDING.md)); the platform does not enter these.*
+- [ ] Charity **legal name + address** as on file with the CRA (step 1; province from a fixed list, postal code validated)
+- [ ] **CRA registration number** (`BN/RR`, e.g. `123456789 RR 0001` — stored normalized `123456789RR0001`)
+- [ ] **Authorized signatory** name (step 1). *Signature image: not collected today.*
+- [ ] Receipt locality is derived (`City, PROV`); logo URL + brand colour + thank-you line (step 2 / Settings)
+- [ ] **Their own Stripe account** connected (step 4 / Settings → Payments) — otherwise donations do not settle to them
 - [ ] **Lawyer-reviewed receipt wording** (Canadian charity counsel)
 
 ## 8. Monitoring (recommended) — Sentry
