@@ -23,13 +23,45 @@ const display = Instrument_Sans({
   weight: ["500", "600", "700"],
 });
 
+const SITE = process.env.NEXT_PUBLIC_APP_URL ?? "https://www.kind-path.org";
+
 export const metadata: Metadata = {
+  // metadataBase is what makes every relative OG/canonical URL resolve to an
+  // absolute one. Without it Next emits relative og:image paths, which crawlers
+  // and every social unfurler silently drop — the tags look present in the HTML
+  // and do nothing.
+  metadataBase: new URL(SITE),
   title: {
-    default: "KindPath — Donation management for faith communities",
+    default: "KindPath — Donation management for Canadian faith communities",
     template: "%s · KindPath",
   },
   description:
     "KindPath helps temples, churches, and mosques across Canada collect donations, automate recurring giving, and issue CRA-compliant tax receipts — beautifully.",
+  applicationName: "KindPath",
+  // The apex 308-redirects to www, so the canonical host is already settled at
+  // the edge; declaring it here stops any stray absolute link from splitting
+  // authority between the two.
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    siteName: "KindPath",
+    locale: "en_CA",
+    url: SITE,
+    title: "KindPath — Donation management for Canadian faith communities",
+    description:
+      "Collect one-time and recurring donations, issue CRA-compliant tax receipts automatically, and manage every donor — from one branded platform.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "KindPath — Donation management for Canadian faith communities",
+    description:
+      "CRA-compliant receipts, recurring giving and a donor portal, built for Canadian temples, churches and mosques.",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1 },
+  },
 };
 
 export default function RootLayout({

@@ -11,6 +11,7 @@ import { Features } from "@/components/marketing/features";
 import { Pricing } from "@/components/marketing/pricing";
 import { Faq } from "@/components/marketing/faq";
 import { Cta } from "@/components/marketing/cta";
+import { StructuredData } from "@/components/marketing/structured-data";
 
 /**
  * Landing page.
@@ -31,6 +32,7 @@ import { Cta } from "@/components/marketing/cta";
 export default function HomePage() {
   return (
     <div className="flex min-h-screen flex-col">
+      <StructuredData />
       <SiteHeader />
       <main className="flex-1">
         <Hero />
