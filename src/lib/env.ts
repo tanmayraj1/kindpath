@@ -75,9 +75,31 @@ export function missingEnv(): string[] {
     }
 
     if (process.env.PAYMENT_PROVIDER === "stripe") {
-      if (!process.env.STRIPE_SECRET_KEY) missing.push("STRIPE_SECRET_KEY");
-      if (!process.env.STRIPE_WEBHOOK_SECRET) missing.push("STRIPE_WEBHOOK_SECRET");
-      if (process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_")) {
+      // Shape, not just presence. A presence check passes on a placeholder — and
+      // the failure that produces is the worst kind: the app boots, /api/ready
+      // reports {"ready":true}, the site looks fixed, and the first REAL donor
+      // gets a Stripe auth error at the moment they try to give. Keys have a
+      // known prefix, so this is cheap to catch at boot instead of at the till.
+      const sk = process.env.STRIPE_SECRET_KEY;
+      const whsec = process.env.STRIPE_WEBHOOK_SECRET;
+
+      if (!sk) {
+        missing.push("STRIPE_SECRET_KEY");
+      } else if (!/^sk_(test|live)_[A-Za-z0-9]{10,}$/.test(sk)) {
+        missing.push(
+          "STRIPE_SECRET_KEY doesn't look like a Stripe key (expected sk_test_… or sk_live_…) — a placeholder was probably pasted"
+        );
+      }
+
+      if (!whsec) {
+        missing.push("STRIPE_WEBHOOK_SECRET");
+      } else if (!/^whsec_[A-Za-z0-9]{10,}$/.test(whsec)) {
+        missing.push(
+          "STRIPE_WEBHOOK_SECRET doesn't look like a signing secret (expected whsec_…) — a placeholder was probably pasted"
+        );
+      }
+
+      if (sk?.startsWith("sk_test_")) {
         console.warn("⚠️  Stripe is in TEST mode (sk_test_) while NODE_ENV=production.");
       }
     }
