@@ -1680,3 +1680,118 @@ export async function sendDonorPortalInvite(donorId: string): Promise<TeamState>
   revalidatePath(`/dashboard/donors/${donorId}`);
   return { ok: true, inviteUrl: invite.url, emailed: invite.emailed };
 }
+
+// ---------------- PAYMENT GATEWAY (ORG-OWNED) ----------------
+
+/**
+ * Let an organization connect its OWN Stripe account.
+ *
+ * This closed a real hole rather than adding a convenience. `saveOrgGatewayCredentials`
+ * has existed since the payments seam was built, but its only caller was
+ * src/app/admin/actions.ts — the PLATFORM admin panel. A charity could not connect
+ * a gateway through the product at all; someone at KindPath had to do it by hand,
+ * and until they did, every donation to that org ran on the platform fallback key
+ * in STRIPE_SECRET_KEY and settled into whatever account that pointed at.
+ *
+ * requireOrgAdmin, not requireOrgUser. Most actions in this file only check that
+ * the caller belongs to the org — but this one decides WHERE THE MONEY GOES, and
+ * `staff` is a real role that should not be able to redirect a charity's donations.
+ *
+ * The credentials themselves are never logged, never audited and never returned:
+ * saveOrgGatewayCredentials seals them with AES-GCM, and the audit entry records
+ * only that they changed.
+ */
+const stripeCredsSchema = z.object({
+  secretKey: z
+    .string()
+    .trim()
+    .regex(
+      /^sk_(test|live)_[A-Za-z0-9]{10,}$/,
+      "That doesn't look like a Stripe secret key. It starts with sk_test_ or sk_live_ and comes from Developers → API keys."
+    ),
+  webhookSecret: z
+    .string()
+    .trim()
+    .regex(/^whsec_[A-Za-z0-9]{10,}$/, "A signing secret starts with whsec_.")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+});
+
+export async function connectStripeAccount(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const session = await requireOrgAdmin();
+
+  const parsed = stripeCredsSchema.safeParse({
+    secretKey: formData.get("secretKey"),
+    webhookSecret: formData.get("webhookSecret") || "",
+  });
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    return { error: issue?.message ?? "Invalid input", fields: { [String(issue?.path[0])]: issue?.message ?? "" } };
+  }
+
+  // Prove the key works BEFORE storing it. Storing an unverified key means the
+  // org believes it is connected and finds out otherwise when a donor's card is
+  // declined — the same failure the env-var shape check exists to prevent, one
+  // layer down and with a real donor attached.
+  const probe = await fetch("https://api.stripe.com/v1/balance", {
+    headers: { Authorization: `Bearer ${parsed.data.secretKey}` },
+  }).catch(() => null);
+
+  if (!probe || !probe.ok) {
+    return {
+      error:
+        "Stripe rejected that key. Check you copied the whole secret key from Developers → API keys.",
+      fields: { secretKey: "Stripe rejected this key" },
+    };
+  }
+
+  const { saveOrgGatewayCredentials } = await import("@/lib/payments/org-credentials");
+  const { invalidateOrgProvider } = await import("@/lib/payments");
+
+  await saveOrgGatewayCredentials(session.orgId, {
+    provider: "stripe",
+    secretKey: parsed.data.secretKey,
+    webhookSecret: parsed.data.webhookSecret,
+  });
+  invalidateOrgProvider(session.orgId);
+
+  await audit({
+    actor: { type: "org_user", id: session.sub },
+    orgId: session.orgId,
+    action: "org.gateway.connected.stripe",
+    entityType: "organization",
+    entityId: session.orgId,
+    // The mode, not the key. Which account it is matters for support; the secret
+    // must never reach the audit log.
+    after: { liveMode: parsed.data.secretKey.startsWith("sk_live_") },
+    ip: clientIp(),
+  });
+
+  revalidatePath("/dashboard/settings");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+export async function disconnectGateway(): Promise<MutationState> {
+  const session = await requireOrgAdmin();
+  const { clearOrgGatewayCredentials } = await import("@/lib/payments/org-credentials");
+  const { invalidateOrgProvider } = await import("@/lib/payments");
+
+  await clearOrgGatewayCredentials(session.orgId);
+  invalidateOrgProvider(session.orgId);
+
+  await audit({
+    actor: { type: "org_user", id: session.sub },
+    orgId: session.orgId,
+    action: "org.gateway.disconnected",
+    entityType: "organization",
+    entityId: session.orgId,
+    ip: clientIp(),
+  });
+
+  revalidatePath("/dashboard/settings");
+  return { ok: true };
+}
