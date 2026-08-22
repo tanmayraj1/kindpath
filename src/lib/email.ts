@@ -105,9 +105,25 @@ export type EmailBrand = {
 };
 
 const HEX6 = /^#?[0-9a-fA-F]{6}$/;
+
+/**
+ * KindPath's own brand colour, for emails an org hasn't branded.
+ *
+ * A literal, not a token: email clients don't resolve CSS custom properties, so
+ * this cannot read `--brand-600` the way the app does. That makes it the one
+ * place a palette change has to be mirrored by hand — this constant was still
+ * the pre-reskin indigo after the whole product moved to teal, which is exactly
+ * the drift a named constant makes visible and a scattered literal does not.
+ */
+const KINDPATH_BRAND = "#1F7A6D";
+
+export function brandHex(c?: string | null): string {
+  return safeColor(c);
+}
+
 function safeColor(c?: string | null): string {
-  if (!c) return "#4f46e5";
-  return HEX6.test(c) ? (c.startsWith("#") ? c : `#${c}`) : "#4f46e5";
+  if (!c) return KINDPATH_BRAND;
+  return HEX6.test(c) ? (c.startsWith("#") ? c : `#${c}`) : KINDPATH_BRAND;
 }
 
 /** Branded HTML wrapper. When `brand` is provided, the email adopts the org's
@@ -129,7 +145,7 @@ export function emailLayout(opts: {
     ? `<img src="${opts.brand.logoUrl}" alt="${opts.brand.orgName ?? ""}" style="max-height:40px;max-width:200px;margin-bottom:16px"/>`
     : opts.brand?.orgName
       ? `<div style="font-weight:800;font-size:20px;margin-bottom:16px;color:${color}">${opts.brand.orgName}</div>`
-      : `<div style="font-weight:800;font-size:20px;margin-bottom:16px">Kind<span style="color:#4f46e5">Path</span></div>`;
+      : `<div style="font-weight:800;font-size:20px;margin-bottom:16px">Kind<span style="color:${KINDPATH_BRAND}">Path</span></div>`;
   const footer = opts.brand?.orgName
     ? `${opts.brand.orgName} · powered by KindPath`
     : `KindPath · Donation management for faith communities`;

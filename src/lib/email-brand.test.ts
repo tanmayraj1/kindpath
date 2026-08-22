@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { emailLayout } from "./email";
+import { emailLayout, brandHex } from "./email";
 
 describe("emailLayout white-labeling", () => {
   it("uses the org name, brand color, and 'powered by' footer when branded", () => {
@@ -14,14 +14,14 @@ describe("emailLayout white-labeling", () => {
     expect(html).toContain("powered by KindPath");
   });
 
-  it("falls back to KindPath styling + indigo when unbranded", () => {
+  it("falls back to KindPath styling + brand teal when unbranded", () => {
     const html = emailLayout({ heading: "Hi", body: "Body" });
     expect(html).toContain("Kind");
-    expect(html).toContain("#4f46e5");
+    expect(html).toContain(brandHex(null));
   });
 
   it("ignores an invalid brand color (falls back to default)", () => {
     const html = emailLayout({ heading: "Hi", body: "Body", brand: { brandColor: "not-a-color" } });
-    expect(html).toContain("#4f46e5");
+    expect(html).toContain(brandHex(null));
   });
 });

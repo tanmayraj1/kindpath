@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { adminDb } from "@/lib/db";
-import { sendEmailWithRetry, emailLayout, escapeHtml } from "@/lib/email";
+import { sendEmailWithRetry, emailLayout, escapeHtml, brandHex } from "@/lib/email";
 import { signedReceiptUrl } from "@/lib/receipt-links";
 import { captureError, log } from "@/lib/observability";
 import { formatCAD } from "@/lib/utils";
@@ -91,7 +91,7 @@ export async function queueReceiptEmail(
       // account-takeover links sitting in inboxes. One extra click, no credential.
       `<p style="margin-top:16px;font-size:13px;color:#64748b">
         Want to see past receipts, manage a recurring gift or update your card?
-        <a href="${base}/claim" style="color:#4f46e5">Set up portal access</a>.
+        <a href="${base}/claim" style="color:${brandHex(args.brandColor)}">Set up portal access</a>.
       </p>`,
     cta: { label: "Download receipt (PDF)", url },
     brand: { orgName: args.orgName, brandColor: args.brandColor, logoUrl: args.logoUrl },
