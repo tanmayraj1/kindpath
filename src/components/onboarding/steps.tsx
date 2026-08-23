@@ -333,10 +333,12 @@ export function GatewayStep({
   summary,
   offered,
   environment,
+  orgToken,
 }: {
   summary: GatewaySummary;
   offered: "wevend" | "stripe";
   environment: GatewayEnvironment;
+  orgToken: boolean;
 }) {
   const router = useRouter();
   const providerLabel = offered === "stripe" ? "Stripe" : "WeVend";
@@ -345,7 +347,12 @@ export function GatewayStep({
 
   return (
     <div className="flex flex-col gap-6">
-      <GatewayForm summary={summary} offered={offered} environment={environment} />
+      <GatewayForm
+        summary={summary}
+        offered={offered}
+        environment={environment}
+        orgToken={orgToken}
+      />
 
       <div className="h-px bg-border" aria-hidden />
 

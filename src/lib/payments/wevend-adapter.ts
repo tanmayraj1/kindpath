@@ -65,8 +65,10 @@ export type WeVendConfig = {
   appUrl?: string;
 };
 
-// WeVend returnCode/respCode values that mean "approved".
-const APPROVED_CODES = new Set(["000", "200"]);
+// Approval + human meanings live in one place, transcribed from WeVend's FAQ
+// (Fiserv Appendix A). `donorMessage` is deliberately narrower than the raw
+// meaning — see that file.
+import { isApprovedCode, donorMessage, describeResponseCode } from "./wevend-response-codes";
 
 type WeVendEnvelope<T> = {
   success?: boolean;
@@ -109,14 +111,38 @@ export class WeVendAdapter implements PaymentProvider {
   }
 
   /**
-   * Prove the credentials work before anything is stored. Authentication is
-   * the only call that is free of side effects and still exercises mid + email
-   * + password (merchant mode) or wvNumber + password (org mode): a wrong MID
-   * fails right here instead of at a donor's first gift.
+   * Prove the credentials work before anything is stored.
+   *
+   * Merchant mode authenticates with mid + email + password, so login alone
+   * proves the merchant. An ORGANIZATION token does not: it authenticates the
+   * organization, and every merchant under it is addressed by passing `mid` per
+   * call — so a typo'd MID would sail through login and fail at a donor's first
+   * gift. Org mode therefore follows up with a read-only lookup carrying the
+   * MID; WeVend answers 401 "Merchant not found or has been deleted" for an
+   * unknown merchant, and something else (an unknown *transaction*) for a real
+   * one. Deliberately a GET for a transaction that cannot exist: it validates
+   * the merchant while creating nothing.
    */
-  async probe(): Promise<{ environment: "sandbox" | "production" | "unknown" }> {
+  async probe(): Promise<{ environment: "sandbox" | "production" | "unknown"; midChecked: boolean }> {
     await this.login();
-    return { environment: WeVendAdapter.environmentOf(this.cfg.baseUrl) };
+    const environment = WeVendAdapter.environmentOf(this.cfg.baseUrl);
+    if (!this.orgMode) return { environment, midChecked: true };
+
+    const body = await this.authed<unknown>(
+      "GET",
+      `/api/payments/get-transaction/${WeVendAdapter.PROBE_TXN_ID}?mid=${encodeURIComponent(this.cfg.mid)}`
+    );
+    if (WeVendAdapter.isUnknownMerchant(body.message)) {
+      throw new Error(`WeVend: merchant ${this.cfg.mid} not found under this organization`);
+    }
+    return { environment, midChecked: true };
+  }
+
+  /** A transaction id that cannot exist, used only to bounce a merchant lookup. */
+  private static readonly PROBE_TXN_ID = "kp-merchant-probe";
+
+  static isUnknownMerchant(message: unknown): boolean {
+    return /merchant not found|merchant .*deleted/i.test(String(message ?? ""));
   }
 
   /** Which WeVend environment a base URL points at — shown to admins, never inferred silently. */
@@ -214,7 +240,7 @@ export class WeVendAdapter implements PaymentProvider {
   }
 
   private static approved(code: unknown): boolean {
-    return APPROVED_CODES.has(String(code));
+    return isApprovedCode(code);
   }
 
   // ---------- hosted (iframe) one-time sale ----------
@@ -250,7 +276,15 @@ export class WeVendAdapter implements PaymentProvider {
       paymentOrderId?: string;
       txnType?: string;
       amount?: string; // WeVend returns the charged amount in DOLLARS here (e.g. "0.12")
-    }>("GET", `/api/payments/get-transaction/${encodeURIComponent(transactionId)}`);
+      // `mid` is REQUIRED on this call when authenticated with an organization
+      // token — without it WeVend answers 400 "mid is required when using an
+      // organization token". That would fail AFTER the donor has paid, which is
+      // the worst possible place: money taken, no confirmation, no receipt. It is
+      // accepted (and correct) in merchant mode too, so it is always sent.
+    }>(
+      "GET",
+      `/api/payments/get-transaction/${encodeURIComponent(transactionId)}?mid=${encodeURIComponent(this.cfg.mid)}`
+    );
 
     const d = body.data ?? {};
     const ok = body.success === true && WeVendAdapter.approved(d.respCode);
@@ -271,7 +305,10 @@ export class WeVendAdapter implements PaymentProvider {
       cardBrand: d.cardType,
       last4: d.cardNum ? d.cardNum.replace(/[^0-9]/g, "").slice(-4) : undefined,
       failureCode: ok ? undefined : String(d.respCode ?? "declined"),
-      failureMessage: ok ? undefined : d.detailRespData ?? "The payment was not approved.",
+      // What the DONOR sees. WeVend's own detailRespData is a processor string
+      // ("DO NOT HONOR"), and some codes must not be repeated to a payer at all,
+      // so this is mapped rather than passed through.
+      failureMessage: ok ? undefined : donorMessage(d.respCode),
     };
   }
 
@@ -310,7 +347,12 @@ export class WeVendAdapter implements PaymentProvider {
         success: false,
         providerChargeRef: body.data?.transactionId ?? "",
         failureCode: String(body.data?.returnCode ?? "declined"),
-        failureMessage: body.message ?? "The recurring payment was declined.",
+        // Recurring charges are read by staff, not the donor, so the raw Fiserv
+        // meaning is more useful here than the softened donor wording.
+        failureMessage:
+          describeResponseCode(body.data?.returnCode) ??
+          body.message ??
+          "The recurring payment was declined.",
       };
     }
     return { success: true, providerChargeRef: body.data?.transactionId ?? "" };

@@ -45,16 +45,23 @@ page still works but the money does not reach you — and the dashboard will kee
 reminding you.
 
 **Don't have a WeVend merchant account?** Ask KindPath support — we'll have
-WeVend set one up for your organization. You'll receive a **Merchant ID (MID)**,
-a **Terminal ID** (usually `00000003`), and a **login email and password**.
+WeVend set one up for your organization. You'll get a claim email from WeVend
+with a registration code; follow it, set your password, and you'll then have a
+**Merchant ID (MID)** and a **Terminal ID** (usually `00000003`).
 
-**Connect it:** enter those four things and press **Connect account**. We check
-them with WeVend before saving, then encrypt them; they are never shown again
-(only the last four characters of the merchant ID stay visible).
+**Connect it:** enter the merchant ID and terminal ID, then press **Connect
+account**. We check the merchant ID with WeVend before saving.
 
-**Refunds.** Issue refunds from inside KindPath (Donations → the gift → Refund)
-so the receipt is cancelled at the same time. A refund made directly in the
-WeVend portal does not reach KindPath — you'd then void the receipt by hand.
+**We never ask for your WeVend password.** Your WeVend account stays yours;
+KindPath bills through it as your provider. (If your merchant account isn't set
+up under KindPath, the form will ask for your WeVend login as well — that's the
+exception, not the norm.)
+
+**Refunds — please read.** KindPath does not issue refunds yet. To refund a
+donor: refund the payment in your **WeVend merchant portal**, then come back to
+KindPath and **void that donor's receipt** (Receipts → the receipt → Void).
+Both steps matter — the CRA does not allow a valid receipt to stand for money
+that was given back, and KindPath cannot see refunds made in WeVend.
 
 Press **Finish setup**. (If you really must, **Skip for now** finishes without a
 gateway — you'll be told clearly that donations won't reach you yet.)

@@ -6,6 +6,20 @@ entries are per behaviour change, not per commit. Dates are when the change reac
 ## [Unreleased]
 
 ### Changed — gateway decision
+- **WeVend connect follows the organization Global Token model** (per WeVend's integration FAQ, now
+  filed at `docs/vendor/WeVend_WePay_API_FAQ.html`): the platform authenticates once as the
+  organization and addresses each charity's merchant by `mid`, so a charity connects with **MID +
+  terminal ID alone** and never hands over its WePay password. Merchant-mode login remains for
+  merchants outside the organization, chosen explicitly so env credentials can't silently override it.
+- **Fixed: `confirmTransaction` sent no `mid`.** Under an organization token WeVend answers
+  400 "mid is required when using an organization token" — which would have failed *after* the donor
+  paid. `mid` is now sent as a query parameter (a header is not accepted), with a regression test.
+- **Connect now verifies the merchant, not just the login.** Organization login succeeds for any MID,
+  so `probe()` follows it with a read-only lookup that distinguishes an unknown merchant — creating
+  nothing.
+- Decline messages come from the Fiserv code table (`wevend-response-codes.ts`, 325 codes): donors get
+  wording they can act on, fraud/security codes collapse to a generic decline, and codes meaning the
+  organization's setup is broken say so.
 - **Charities are offered WeVend, not Stripe.** New `connectWeVendAccount` (merchant mode; authenticates
   with WeVend before storing; audits `midTail` + environment), `GatewayForm` is provider-aware via
   `OFFERED_ORG_GATEWAY` (`src/lib/payments/offered.ts`), onboarding/done/dashboard copy is

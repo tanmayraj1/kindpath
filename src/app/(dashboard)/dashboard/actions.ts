@@ -1802,8 +1802,10 @@ export async function connectStripeAccount(
 const wevendCredsSchema = z.object({
   mid: z.string().trim().min(3, "Merchant ID is required").max(40),
   termId: z.string().trim().min(1, "Terminal ID is required").max(20),
-  email: z.string().trim().email("Enter the merchant login email").max(254),
-  password: z.string().min(1, "Merchant password is required").max(200),
+  // Merchant mode only. When the platform holds organization credentials these
+  // stay empty and the charity's WePay password never reaches KindPath.
+  email: z.string().trim().max(254).optional().or(z.literal("")),
+  password: z.string().max(200).optional().or(z.literal("")),
 });
 
 export async function connectWeVendAccount(
@@ -1815,36 +1817,64 @@ export async function connectWeVendAccount(
   const parsed = wevendCredsSchema.safeParse({
     mid: formData.get("mid"),
     termId: formData.get("termId"),
-    email: formData.get("email"),
-    password: formData.get("password"),
+    email: formData.get("email") || "",
+    password: formData.get("password") || "",
   });
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     return { error: issue?.message ?? "Invalid input", fields: { [String(issue?.path[0])]: issue?.message ?? "" } };
   }
 
-  const { wevendEnabled } = await import("@/lib/payments/offered");
+  const { wevendEnabled, platformHasOrgToken } = await import("@/lib/payments/offered");
   if (!wevendEnabled()) {
     return { error: "WeVend is not enabled on this platform yet. Contact KindPath support." };
+  }
+
+  // Which auth shape this merchant will be charged under — decided here, once,
+  // and stored to match. Organization Global Token is WeVend's documented default
+  // for this integration and means the charity never hands us a password.
+  const ownLogin = Boolean(parsed.data.email && parsed.data.password);
+  if (!ownLogin && !platformHasOrgToken()) {
+    return {
+      error:
+        "This platform isn't set up with WeVend organization credentials yet, so a merchant login is required. Enter the email and password from your WeVend account.",
+      fields: { email: "Required until KindPath's WeVend organization is configured" },
+    };
+  }
+  if (!ownLogin && (parsed.data.email || parsed.data.password)) {
+    return {
+      error: "Enter both the WeVend login email and password, or leave both blank.",
+      fields: { password: "Enter both, or neither" },
+    };
   }
 
   const { WeVendAdapter } = await import("@/lib/payments/wevend-adapter");
   let environment: "sandbox" | "production" | "unknown";
   try {
-    const adapter = new WeVendAdapter({
-      mid: parsed.data.mid,
-      termId: parsed.data.termId,
-      email: parsed.data.email,
-      password: parsed.data.password,
-      wvNumber: "", // merchant mode, never the platform's org token
-    });
+    const adapter = ownLogin
+      ? new WeVendAdapter({
+          mid: parsed.data.mid,
+          termId: parsed.data.termId,
+          email: parsed.data.email,
+          password: parsed.data.password,
+          wvNumber: "", // force merchant mode
+        })
+      : // Organization token from the platform env; the probe checks that this
+        // MID actually exists under that organization, which login alone cannot.
+        new WeVendAdapter({ mid: parsed.data.mid, termId: parsed.data.termId });
     ({ environment } = await adapter.probe());
   } catch (e) {
-    captureError(e, { source: "gateway.connect.wevend", orgId: session.orgId });
+    captureError(e, { source: "gateway.connect.wevend", orgId: session.orgId, ownLogin });
+    const unknownMerchant = WeVendAdapter.isUnknownMerchant(
+      e instanceof Error ? e.message : ""
+    ) || /not found under this organization/i.test(e instanceof Error ? e.message : "");
     return {
-      error:
-        "WeVend rejected those credentials. Check the merchant ID, login email and password from your WeVend account.",
-      fields: { mid: "WeVend rejected these credentials" },
+      error: unknownMerchant
+        ? "WeVend doesn't recognize that merchant ID. Check it against the details WeVend sent you."
+        : ownLogin
+          ? "WeVend rejected those credentials. Check the merchant ID, login email and password from your WeVend account."
+          : "WeVend couldn't verify that merchant. Check the merchant ID and terminal ID against the details WeVend sent you.",
+      fields: { mid: "WeVend could not verify this merchant" },
     };
   }
 
@@ -1855,8 +1885,9 @@ export async function connectWeVendAccount(
     provider: "wevend",
     mid: parsed.data.mid,
     termId: parsed.data.termId,
-    email: parsed.data.email,
-    password: parsed.data.password,
+    // Stored only in merchant mode. Absent means "charge this merchant under the
+    // platform's organization token".
+    ...(ownLogin ? { email: parsed.data.email, password: parsed.data.password } : {}),
   });
   invalidateOrgProvider(session.orgId);
 
@@ -1867,7 +1898,7 @@ export async function connectWeVendAccount(
     entityType: "organization",
     entityId: session.orgId,
     // Never the password or the whole MID.
-    after: { midTail: parsed.data.mid.slice(-4), environment },
+    after: { midTail: parsed.data.mid.slice(-4), environment, auth: ownLogin ? "merchant" : "organization" },
     ip: clientIp(),
   });
 

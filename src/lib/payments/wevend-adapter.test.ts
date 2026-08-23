@@ -20,13 +20,20 @@ const AUTH_OK = jsonResponse({
   data: { accessToken: "access-tok-1", refreshToken: "refresh-tok-1", role: "admin" },
 });
 
-/** Route a mock fetch by URL suffix; records calls for assertions. */
+/**
+ * Route a mock fetch by URL suffix; records calls for assertions.
+ *
+ * Matching ignores the query string: `get-transaction` carries `?mid=` (required
+ * under an organization token), and routes are declared by path. The full URL is
+ * still recorded, so tests can assert on the query.
+ */
 function router(routes: Record<string, () => Response>) {
   const calls: { url: string; init?: RequestInit }[] = [];
   const impl = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
     const u = String(url);
     calls.push({ url: u, init });
-    const key = Object.keys(routes).find((k) => u.endsWith(k));
+    const path = u.split("?")[0];
+    const key = Object.keys(routes).find((k) => path.endsWith(k));
     if (!key) throw new Error(`unrouted: ${u}`);
     return routes[key]();
   }) as unknown as typeof fetch;
@@ -230,7 +237,11 @@ describe("confirmTransaction", () => {
     const r = await adapter(impl).confirmTransaction("txn_2");
     expect(r.success).toBe(false);
     expect(r.failureCode).toBe("005");
-    expect(r.failureMessage).toBe("Declined");
+    // The processor's own string ("Declined") is NOT passed through to the payer:
+    // detailRespData is terse processor shorthand and, for some codes, discloses
+    // more than a payer should be told. The code is kept for support.
+    expect(r.failureMessage).not.toBe("Declined");
+    expect(r.failureMessage).toMatch(/declined/i);
   });
 });
 
@@ -347,7 +358,7 @@ describe("probe", () => {
       password: "pw",
       fetchImpl,
     });
-    await expect(a.probe()).resolves.toEqual({ environment: "sandbox" });
+    await expect(a.probe()).resolves.toEqual({ environment: "sandbox", midChecked: true });
     expect(calls).toEqual(["https://wepay.wevend.dev/api/auth/token"]);
   });
 
@@ -371,5 +382,129 @@ describe("probe", () => {
     expect(WeVendAdapter.environmentOf("https://wepay.wevend.dev/api")).toBe("sandbox");
     expect(WeVendAdapter.environmentOf("https://wepay.wevend.pro")).toBe("production");
     expect(WeVendAdapter.environmentOf("")).toBe("unknown");
+  });
+});
+
+describe("organization Global Token mode", () => {
+  // WeVend's integration FAQ: "assume the Global Token feature will be enabled —
+  // default to using the organization global access token, not the individual
+  // merchant token." One token, every merchant addressed by `mid` per call.
+  const orgCfg = {
+    baseUrl: "https://wepay.wevend.dev",
+    iframeUrl: "https://iframe.wevend.dev",
+    mid: "RCTST1",
+    termId: "00000003",
+    wvNumber: "WV-ISV-50001",
+    password: "pw",
+  };
+
+  function stub(handlers: Array<(url: string) => Response | undefined>) {
+    const seen: string[] = [];
+    const fetchImpl = (async (url: string) => {
+      seen.push(String(url));
+      for (const h of handlers) {
+        const r = h(String(url));
+        if (r) return r;
+      }
+      return new Response(JSON.stringify({ success: true, data: {} }), { status: 200 });
+    }) as unknown as typeof fetch;
+    return { seen, fetchImpl };
+  }
+
+  const authOk = (url: string) =>
+    url.includes("/auth/org-token")
+      ? new Response(JSON.stringify({ success: true, data: { accessToken: "t" } }), { status: 200 })
+      : undefined;
+
+  it("authenticates against org-token, not the merchant token endpoint", async () => {
+    const { seen, fetchImpl } = stub([authOk]);
+    const a = new WeVendAdapter({ ...orgCfg, fetchImpl });
+    await a.probe();
+    expect(seen[0]).toContain("/api/auth/org-token");
+    expect(seen.some((u) => u.includes("/auth/token"))).toBe(false);
+  });
+
+  it("checks the MID during probe, because org login proves the org and not the merchant", async () => {
+    const { seen, fetchImpl } = stub([authOk]);
+    const a = new WeVendAdapter({ ...orgCfg, fetchImpl });
+    await a.probe();
+    // A read-only lookup carrying the mid — it must create nothing.
+    const lookup = seen.find((u) => u.includes("get-transaction"));
+    expect(lookup).toContain("mid=RCTST1");
+    expect(seen.some((u) => u.includes("/payments/sale"))).toBe(false);
+  });
+
+  it("rejects a MID that is not under the organization", async () => {
+    const { fetchImpl } = stub([
+      authOk,
+      (url) =>
+        url.includes("get-transaction")
+          ? new Response(
+              JSON.stringify({ success: false, message: "Merchant not found or has been deleted" }),
+              { status: 401 }
+            )
+          : undefined,
+    ]);
+    const a = new WeVendAdapter({ ...orgCfg, fetchImpl });
+    await expect(a.probe()).rejects.toThrow(/RCTST1 not found under this organization/);
+  });
+
+  it("sends mid on get-transaction — WeVend rejects the call without it under an org token", async () => {
+    // Regression: without `?mid=` WeVend answers 400 "mid is required when using
+    // an organization token" — which would fail AFTER the donor had paid.
+    const { seen, fetchImpl } = stub([
+      authOk,
+      (url) =>
+        url.includes("get-transaction")
+          ? new Response(
+              JSON.stringify({ success: true, data: { respCode: "000", amount: "5.00" } }),
+              { status: 200 }
+            )
+          : undefined,
+    ]);
+    const a = new WeVendAdapter({ ...orgCfg, fetchImpl });
+    const r = await a.confirmTransaction("txn_1");
+    expect(r.success).toBe(true);
+    expect(seen.find((u) => u.includes("get-transaction/txn_1"))).toContain("mid=RCTST1");
+  });
+});
+
+describe("decline messages", () => {
+  const cfg = {
+    baseUrl: "https://wepay.wevend.dev",
+    iframeUrl: "https://iframe.wevend.dev",
+    mid: "M1",
+    termId: "1",
+    email: "a@b.ca",
+    password: "pw",
+  };
+
+  async function confirmWithCode(respCode: string) {
+    const fetchImpl = (async (url: string) =>
+      String(url).includes("/auth/")
+        ? new Response(JSON.stringify({ success: true, data: { accessToken: "t" } }), { status: 200 })
+        : new Response(JSON.stringify({ success: true, data: { respCode } }), { status: 200 })) as unknown as typeof fetch;
+    return new WeVendAdapter({ ...cfg, fetchImpl }).confirmTransaction("t1");
+  }
+
+  it("tells a donor what they can act on", async () => {
+    const expired = await confirmWithCode("101");
+    expect(expired.success).toBe(false);
+    expect(expired.failureMessage).toMatch(/expired/i);
+    expect(expired.failureCode).toBe("101");
+  });
+
+  it("does not repeat fraud or security codes back to the payer", async () => {
+    // 102 is "Suspected fraud" — naming it coaches card testing and is not ours
+    // to disclose. The code is still kept for support.
+    const fraud = await confirmWithCode("102");
+    expect(fraud.failureMessage).not.toMatch(/fraud|counterfeit|security/i);
+    expect(fraud.failureMessage).toMatch(/declined/i);
+    expect(fraud.failureCode).toBe("102");
+  });
+
+  it("distinguishes a broken merchant setup from a bad card", async () => {
+    const setup = await confirmWithCode("109"); // Invalid merchant
+    expect(setup.failureMessage).toMatch(/organization can't accept card payments/i);
   });
 });

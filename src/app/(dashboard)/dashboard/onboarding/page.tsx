@@ -6,7 +6,7 @@ import { getOrg } from "@/lib/queries/org";
 import { withTenant } from "@/lib/tenant";
 import { describeOrgGatewayCredentials } from "@/lib/payments/org-credentials";
 import { profileComplete } from "@/lib/onboarding";
-import { OFFERED_ORG_GATEWAY, wevendEnvironment } from "@/lib/payments/offered";
+import { OFFERED_ORG_GATEWAY, wevendEnvironment, platformHasOrgToken } from "@/lib/payments/offered";
 import { OrgProfileStep, BrandingStep, PlanStep, GatewayStep } from "@/components/onboarding/steps";
 import { cn } from "@/lib/utils";
 
@@ -104,6 +104,7 @@ export default async function OnboardingPage({
                 summary={gateway}
                 offered={OFFERED_ORG_GATEWAY}
                 environment={wevendEnvironment()}
+                orgToken={platformHasOrgToken()}
               />
             )}
           </CardContent>

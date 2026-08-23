@@ -44,10 +44,17 @@ export function GatewayForm({
   summary,
   offered = "wevend",
   environment = "unknown",
+  orgToken = false,
 }: {
   summary: GatewaySummary;
   offered?: "wevend" | "stripe";
   environment?: GatewayEnvironment;
+  /**
+   * The platform holds WeVend organization credentials, so this merchant is
+   * addressed by MID under that organization and the charity's own WePay
+   * password is not needed — and therefore is not asked for.
+   */
+  orgToken?: boolean;
 }) {
   const connectAction = offered === "stripe" ? connectStripeAccount : connectWeVendAccount;
   const [state, formAction] = useFormState(connectAction, initial);
@@ -192,28 +199,43 @@ export function GatewayForm({
                 hint="From your WeVend merchant profile; usually 00000003."
               />
             </div>
-            <Field
-              name="email"
-              label="WeVend login email"
-              type="email"
-              autoComplete="off"
-              placeholder="treasurer@yourorg.ca"
-              required
-              errors={state.fields}
-            />
-            <Field
-              name="password"
-              label="WeVend password"
-              type="password"
-              autoComplete="new-password"
-              required
-              errors={state.fields}
-            />
+            {!orgToken && (
+              <>
+                <Field
+                  name="email"
+                  label="WeVend login email"
+                  type="email"
+                  autoComplete="off"
+                  placeholder="treasurer@yourorg.ca"
+                  required
+                  errors={state.fields}
+                />
+                <Field
+                  name="password"
+                  label="WeVend password"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  errors={state.fields}
+                />
+              </>
+            )}
             <p className="text-xs leading-relaxed text-muted-foreground">
-              These are the merchant details WeVend gave you when your account was set up. We
-              check them with WeVend before saving, then encrypt them — they are never shown
-              again; only the last four characters of the merchant ID are kept visible so you can
-              tell two accounts apart.
+              {orgToken ? (
+                <>
+                  These are on the merchant details WeVend sent you. We check the merchant ID with
+                  WeVend before saving. <span className="font-medium">We never ask for your
+                  WeVend password</span> — your account stays yours; KindPath is authorized to
+                  bill through it as your provider.
+                </>
+              ) : (
+                <>
+                  These are the merchant details WeVend gave you when your account was set up. We
+                  check them with WeVend before saving, then encrypt them — they are never shown
+                  again; only the last four characters of the merchant ID are kept visible so you
+                  can tell two accounts apart.
+                </>
+              )}
               {envLabel && (
                 <>
                   {" "}

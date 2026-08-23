@@ -6,7 +6,7 @@ import { GatewayForm } from "@/components/dashboard/gateway-form";
 import { requireOrgUser } from "@/lib/auth/guards";
 import { getOrg } from "@/lib/queries/org";
 import { describeOrgGatewayCredentials } from "@/lib/payments/org-credentials";
-import { OFFERED_ORG_GATEWAY, wevendEnvironment } from "@/lib/payments/offered";
+import { OFFERED_ORG_GATEWAY, wevendEnvironment, platformHasOrgToken } from "@/lib/payments/offered";
 
 export const metadata = { title: "Settings" };
 
@@ -37,6 +37,7 @@ export default async function SettingsPage() {
               summary={gateway}
               offered={OFFERED_ORG_GATEWAY}
               environment={wevendEnvironment()}
+              orgToken={platformHasOrgToken()}
             />
           </CardContent>
         </Card>

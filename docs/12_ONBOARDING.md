@@ -87,7 +87,8 @@ per month, driven by `/api/cron/billing`). Redirects to step 4. It used to set
 
 Renders **the same `GatewayForm`** as Settings → Payments
 (`src/components/dashboard/gateway-form.tsx`; offered gateway = **WeVend** via
-`src/lib/payments/offered.ts`, action `connectWeVendAccount` — Stripe's `connectStripeAccount`
+`src/lib/payments/offered.ts`, action `connectWeVendAccount`, which asks for **MID + terminal ID**
+only when the platform holds WeVend organization credentials — Stripe's `connectStripeAccount`
 is retained but not offered; `disconnectGateway` in `src/app/(dashboard)/dashboard/actions.ts`;
 see `docs/13_PAYMENT_GATEWAYS.md`). Below it:
 

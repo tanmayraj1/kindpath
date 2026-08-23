@@ -72,13 +72,22 @@ export async function getPaymentProviderForOrg(orgId: string): Promise<PaymentPr
   const built: PaymentProvider =
     creds.provider === "stripe"
       ? new StripeAdapter({ secretKey: creds.secretKey, webhookSecret: creds.webhookSecret })
-      : new WeVendAdapter({
-          mid: creds.mid,
-          email: creds.email,
-          wvNumber: creds.wvNumber,
-          password: creds.password,
-          termId: creds.termId,
-        });
+      : // Mode is chosen explicitly rather than by `??` fallback. An org that
+        // supplied its own merchant login must use it even when the platform
+        // also has organization credentials in the environment — letting
+        // `wvNumber` fall through to env would silently switch such an org onto
+        // the platform's organization token.
+        creds.email && creds.password
+        ? new WeVendAdapter({
+            mid: creds.mid,
+            termId: creds.termId,
+            email: creds.email,
+            password: creds.password,
+            wvNumber: "", // force merchant mode
+          })
+        : // Organization Global Token: credentials come from the platform env,
+          // this merchant is addressed by mid/termId.
+          new WeVendAdapter({ mid: creds.mid, termId: creds.termId });
 
   orgProviders.set(orgId, built);
   return built;

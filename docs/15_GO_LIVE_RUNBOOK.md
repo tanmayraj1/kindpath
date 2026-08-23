@@ -56,7 +56,8 @@ merchant**. The owner now has a WeVend merchant account (mid + email + password 
 | `WEVEND_IFRAME_URL` | `https://iframe.wevend.pro` / `https://iframe.wevend.dev` (same environment) |
 | `WEVEND_MID` | the merchant ID the platform fallback transacts as |
 | `WEVEND_TERM_ID` | terminal id (usually `00000003`) |
-| `WEVEND_EMAIL` + `WEVEND_PASSWORD` | the merchant login (merchant mode); **or** `WEVEND_WV_NUMBER` + `WEVEND_PASSWORD` for ISV/org mode |
+| `WEVEND_WV_NUMBER` + `WEVEND_PASSWORD` | **preferred** — organization credentials. WeVend's FAQ says to default to the organization Global Token, and setting these is also what lets a charity connect with **MID + terminal ID alone**, without handing KindPath its WePay password |
+| `WEVEND_EMAIL` + `WEVEND_PASSWORD` | merchant-mode fallback, when there is no organization |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | can stay; ignored when provider is `wevend` |
 
 Then redeploy and check:
@@ -66,9 +67,17 @@ curl -s https://www.kind-path.org/api/ready     # names any missing WEVEND_* var
 curl -s https://www.kind-path.org/api/health    # payments: { provider:"wevend", ok:true, environment:"production"|"sandbox" }
 ```
 
+`WEVEND_IFRAME_URL` must match **both** the environment and the merchant's region:
+Canada `iframe.wevend.dev` / `.pro`, US `iframe-us.wevend.dev` / `.pro` (v3.2.2 p.125). Worth
+checking — WeVend's FAQ says sandbox test merchants are registered in **US country**.
+
 `/api/health` authenticates as the platform merchant (`WeVendAdapter.probe()`), so a wrong
 password or MID shows up there, not at the first donation. Webhook endpoint: none — WeVend has
-no webhooks; `/api/webhooks/pos` answers 501 for it.
+no webhooks; `/api/webhooks/pos` answers 501 for it. **That also means no automatic receipt
+voiding on refund** — see the refund gap in `docs/13_PAYMENT_GATEWAYS.md`.
+
+Sandbox test cards: `4111 1111 1111 1111` with any future expiry approves; any PAN with a past
+expiry exercises the expired-card path. No other decline scenarios are provisioned.
 
 Each charity then connects **its own** WeVend merchant in Settings → Payments / onboarding step 4
 (`docs/13_PAYMENT_GATEWAYS.md`). First real charge to prove: $5 on `/give/<slug>` → WeVend iframe →

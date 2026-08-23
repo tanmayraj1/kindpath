@@ -9,16 +9,23 @@ import { captureError } from "@/lib/observability";
  * Gateway base/iframe URLs stay global env config; only merchant identity
  * varies per org.
  *
- * WeVend supports two auth shapes, so credentials carry either:
- *   - `email`    → merchant mode  (POST /auth/token with mid + email + password)
- *   - `wvNumber` → org/ISV mode   (POST /auth/org-token with wvNumber + password)
+ * WeVend supports two auth shapes, and which one an org uses decides what has to
+ * be stored here at all:
+ *   - **Organization Global Token** (WeVend's documented default for this
+ *     integration): the PLATFORM authenticates once as the organization and
+ *     addresses each merchant by passing `mid` per call. An org then stores only
+ *     `mid` + `termId` — no password ever leaves the charity, which is the whole
+ *     point of the model.
+ *   - **Merchant mode**: `email` + `password` for a merchant that is not under
+ *     the platform's organization (POST /auth/token with mid + email + password).
  * `mid` identifies the merchant to transact as in both modes.
  */
 export type WeVendCredentials = {
   provider: "wevend";
   mid: string;
   termId: string;
-  password: string;
+  /** Merchant mode only. Absent means "address this merchant with the platform's organization token". */
+  password?: string;
   email?: string;
   wvNumber?: string;
 };

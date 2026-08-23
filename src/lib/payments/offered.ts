@@ -23,3 +23,16 @@ export function wevendEnvironment(): "sandbox" | "production" | "unknown" {
 export function wevendEnabled(): boolean {
   return Boolean(process.env.WEVEND_BASE_URL && process.env.WEVEND_IFRAME_URL);
 }
+
+/**
+ * Does the platform hold WeVend **organization** credentials?
+ *
+ * WeVend's integration FAQ is explicit: "assume the Global Token feature will be
+ * enabled — default to using the organization global access token, not the
+ * individual merchant token." When we have one, a charity connecting its merchant
+ * needs to give us only its MID and terminal ID; its WePay password stays with
+ * it. Without one, we fall back to asking for the merchant login.
+ */
+export function platformHasOrgToken(): boolean {
+  return Boolean(process.env.WEVEND_WV_NUMBER && process.env.WEVEND_PASSWORD);
+}
