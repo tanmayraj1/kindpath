@@ -5,6 +5,14 @@ entries are per behaviour change, not per commit. Dates are when the change reac
 
 ## [Unreleased]
 
+### Changed — gateway decision
+- **Charities are offered WeVend, not Stripe.** New `connectWeVendAccount` (merchant mode; authenticates
+  with WeVend before storing; audits `midTail` + environment), `GatewayForm` is provider-aware via
+  `OFFERED_ORG_GATEWAY` (`src/lib/payments/offered.ts`), onboarding/done/dashboard copy is
+  provider-neutral, and `/api/health` probes the platform WeVend login. Stripe adapter + action + form
+  remain in the repo, hidden. Platform default moves to `PAYMENT_PROVIDER=wevend` (see
+  `docs/15_GO_LIVE_RUNBOOK.md` §2).
+
 ### Added
 - **Onboarding step 4 — Get paid.** The Stripe connect form (same as Settings → Payments) is
   now part of setup. `onboardedAt` is set only when a gateway is connected, or when the admin

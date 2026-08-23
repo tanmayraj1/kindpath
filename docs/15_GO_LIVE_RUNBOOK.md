@@ -40,7 +40,41 @@ Quebec organization**, then delete that paragraph.
 **Rotate** the Resend API key that was visible in a screenshot during setup, and
 downgrade to Sending-only if it isn't already.
 
-## 2. Stripe
+## 2. Payments — switching the platform to WeVend (decision 2026-08-23)
+
+Stripe is being dropped as the platform default: the only account available was
+India-registered and cannot take CAD, and the product's client gateway is WeVend. The
+WeVend adapter is built and sandbox-verified; what it has always lacked is a **provisioned
+merchant**. The owner now has a WeVend merchant account (mid + email + password + termId).
+
+**Vercel → Production env (edit in place where the name exists):**
+
+| Variable | Value |
+|---|---|
+| `PAYMENT_PROVIDER` | `wevend` |
+| `WEVEND_BASE_URL` | `https://wepay.wevend.pro` (production) or `https://wepay.wevend.dev` (sandbox) — **must match the merchant account** |
+| `WEVEND_IFRAME_URL` | `https://iframe.wevend.pro` / `https://iframe.wevend.dev` (same environment) |
+| `WEVEND_MID` | the merchant ID the platform fallback transacts as |
+| `WEVEND_TERM_ID` | terminal id (usually `00000003`) |
+| `WEVEND_EMAIL` + `WEVEND_PASSWORD` | the merchant login (merchant mode); **or** `WEVEND_WV_NUMBER` + `WEVEND_PASSWORD` for ISV/org mode |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | can stay; ignored when provider is `wevend` |
+
+Then redeploy and check:
+
+```bash
+curl -s https://www.kind-path.org/api/ready     # names any missing WEVEND_* var
+curl -s https://www.kind-path.org/api/health    # payments: { provider:"wevend", ok:true, environment:"production"|"sandbox" }
+```
+
+`/api/health` authenticates as the platform merchant (`WeVendAdapter.probe()`), so a wrong
+password or MID shows up there, not at the first donation. Webhook endpoint: none — WeVend has
+no webhooks; `/api/webhooks/pos` answers 501 for it.
+
+Each charity then connects **its own** WeVend merchant in Settings → Payments / onboarding step 4
+(`docs/13_PAYMENT_GATEWAYS.md`). First real charge to prove: $5 on `/give/<slug>` → WeVend iframe →
+return → receipt in a real inbox.
+
+## 2a. Stripe (historical — what was done before the switch)
 
 - A sandbox/test-mode account needs no business verification; that is how
   production was brought up without a KindPath Stripe account existing yet.
@@ -121,18 +155,15 @@ is two common words and depends on backlinks and time, not on code.
 
 ## 6. Before the first real charity — checklist
 
-- [ ] The charity connects **its own live** Stripe key in Settings → Payments (or
-      onboarding step 4) and adds the webhook endpoint in its live mode
-      (`docs/13_PAYMENT_GATEWAYS.md` §4).
-- [ ] **Platform `STRIPE_SECRET_KEY` replaced with a key from a *Canadian* Stripe account**
-      (KindPath's own; test mode is fine to start). The current India-registered sandbox
-      key cannot take CAD at all — until this is done *no* donation on the site succeeds,
-      including the platform-fallback path new orgs land on. Then replace
-      `STRIPE_WEBHOOK_SECRET` with that account's endpoint secret and redeploy;
-      `/api/health` → `payments.ok:true, country:"CA"`.
+- [ ] The charity connects **its own** WeVend merchant in Settings → Payments (or onboarding
+      step 4) — `docs/13_PAYMENT_GATEWAYS.md`.
+- [ ] **Platform switched to WeVend** (§2): `PAYMENT_PROVIDER=wevend` + `WEVEND_*` set, redeployed,
+      `/api/health` → `payments.ok:true`. Until then *no* donation on the site succeeds (the Stripe
+      platform key is India-registered and cannot take CAD).
+- [ ] First real WeVend charge proven end to end (`/give` → iframe → receipt in a real inbox).
 - [ ] Resend domain moved to a North American region if the charity is in Quebec;
       `docs/02_COMPLIANCE.md` §3 updated.
 - [ ] Resend API key rotated (screenshot exposure).
 - [ ] `/api/health` green after the first cron run.
 - [ ] One real-inbox receipt opened from production.
-- [ ] WeVend: still blocked on the merchant ID (`WV-ISV-50001`); not offered in UI.
+- [ ] WeVend sandbox ISV (`WV-ISV-50001`) still has no test merchant — ask WeVend for one + test cards if a sandbox walk is wanted before production.

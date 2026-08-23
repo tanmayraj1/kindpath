@@ -108,6 +108,25 @@ export class WeVendAdapter implements PaymentProvider {
     }
   }
 
+  /**
+   * Prove the credentials work before anything is stored. Authentication is
+   * the only call that is free of side effects and still exercises mid + email
+   * + password (merchant mode) or wvNumber + password (org mode): a wrong MID
+   * fails right here instead of at a donor's first gift.
+   */
+  async probe(): Promise<{ environment: "sandbox" | "production" | "unknown" }> {
+    await this.login();
+    return { environment: WeVendAdapter.environmentOf(this.cfg.baseUrl) };
+  }
+
+  /** Which WeVend environment a base URL points at — shown to admins, never inferred silently. */
+  static environmentOf(baseUrl: string | undefined): "sandbox" | "production" | "unknown" {
+    if (!baseUrl) return "unknown";
+    if (/wevend\.dev/i.test(baseUrl)) return "sandbox";
+    if (/wevend\.pro/i.test(baseUrl)) return "production";
+    return "unknown";
+  }
+
   // ---------- helpers ----------
 
   /**

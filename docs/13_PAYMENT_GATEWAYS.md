@@ -3,6 +3,13 @@
 > As built. Supersedes the "mock adapter now, client POS later" framing in
 > 01 §4.4, 03 §4, 09 §7 and 10 §8. Last verified against `734d305`.
 
+## Decision (2026-08-23): charities are offered **WeVend**; Stripe stays in the code, off the UI
+
+`OFFERED_ORG_GATEWAY = "wevend"` in `src/lib/payments/offered.ts` decides which connect form
+Settings → Payments and onboarding step 4 render. The Stripe adapter, `connectStripeAccount` and
+its form remain (tested; works for Canadian Stripe accounts) and come back by flipping that one
+constant. The platform default is being moved to WeVend too — see `docs/15_GO_LIVE_RUNBOOK.md` §2.
+
 ## The one sentence
 
 Every charge goes through `getPaymentProviderForOrg(orgId)`
@@ -18,8 +25,8 @@ credentials exist but cannot be read, it **refuses** rather than falling back.
 
 | Adapter | File | Status |
 |---|---|---|
-| `StripeAdapter` | `src/lib/payments/stripe-adapter.ts` | **live** (production runs on it) |
-| `WeVendAdapter` | `src/lib/payments/wevend-adapter.ts` | built, untested against a real terminal — blocked on a merchant ID |
+| `WeVendAdapter` | `src/lib/payments/wevend-adapter.ts` | **the offered gateway**; hosted-iframe flow + per-org merchant creds + recurring via `sale-with-token` + refund/void; sandbox auth verified; awaiting a provisioned merchant for the first real charge |
+| `StripeAdapter` | `src/lib/payments/stripe-adapter.ts` | retained, not offered to orgs (see decision above); was the platform default until 2026-08-23 |
 | `MockAdapter` / `mock-hosted` | `src/lib/payments/mock-adapter.ts` | dev/demo only; **refused in production** by `src/lib/env.ts` because its webhook verifier accepts unsigned JSON |
 
 `getPaymentProvider()` returns the platform adapter chosen by `PAYMENT_PROVIDER`
@@ -48,7 +55,29 @@ outside production, which is why `CREDENTIALS_KEY` is **mandatory** in productio
 Nothing ever returns, logs or audits the secret. The audit entry on connect is
 `org.gateway.connected.stripe` with `after: { liveMode }` only.
 
-### How an org connects (the only supported way)
+### How an org connects — WeVend (what charities see)
+
+`connectWeVendAccount` in `src/app/(dashboard)/dashboard/actions.ts`, rendered by `GatewayForm`
+(`offered="wevend"`). Fields: **Merchant ID (MID), Terminal ID, WeVend login email, password** —
+merchant mode; the platform's ISV/org token is never handed to an org.
+
+1. Requires the platform to have WeVend enabled (`WEVEND_BASE_URL` + `WEVEND_IFRAME_URL`); otherwise
+   "WeVend is not enabled on this platform yet".
+2. **Probe before storing**: `WeVendAdapter.probe()` authenticates with mid + email + password
+   (`POST /api/auth/token`). A wrong MID or password fails here, not at a donor's first gift.
+3. `saveOrgGatewayCredentials({ provider: "wevend", mid, termId, email, password })` →
+   `invalidateOrgProvider` → audit `org.gateway.connected.wevend` with `{ midTail, environment }`
+   only → revalidate.
+4. **Environment is platform-wide.** Per-org credentials don't carry a host; `WEVEND_BASE_URL`
+   does. The form, the status block and the done screen say *Sandbox* / *Production*
+   (`wevendEnvironment()`), because a production merchant on a sandbox-pointed platform
+   "connects" and then fails at the first gift.
+
+WeVend has no webhooks. Refunds issued **through KindPath** (`adapter.refund`) are synchronous and
+void the receipt; a refund made directly in the WeVend merchant portal is **not** seen by KindPath
+— that receipt must be voided by hand in the dashboard. Document this to charities.
+
+### How an org connects — Stripe (retained, not offered)
 
 `connectStripeAccount` in `src/app/(dashboard)/dashboard/actions.ts`, rendered by
 `GatewayForm` (`src/components/dashboard/gateway-form.tsx`) in **Settings →

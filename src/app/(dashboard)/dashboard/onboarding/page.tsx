@@ -6,6 +6,7 @@ import { getOrg } from "@/lib/queries/org";
 import { withTenant } from "@/lib/tenant";
 import { describeOrgGatewayCredentials } from "@/lib/payments/org-credentials";
 import { profileComplete } from "@/lib/onboarding";
+import { OFFERED_ORG_GATEWAY, wevendEnvironment } from "@/lib/payments/offered";
 import { OrgProfileStep, BrandingStep, PlanStep, GatewayStep } from "@/components/onboarding/steps";
 import { cn } from "@/lib/utils";
 
@@ -15,7 +16,7 @@ const STEPS = [
   { n: 1, title: "Organization & receipts", blurb: "The legal details that appear on every receipt." },
   { n: 2, title: "Your branding", blurb: "Make your giving page and receipts look like you." },
   { n: 3, title: "Pick your plan", blurb: "Start free for 14 days on any plan." },
-  { n: 4, title: "Get paid", blurb: "Connect the Stripe account your donations settle to." },
+  { n: 4, title: "Get paid", blurb: "Connect the merchant account your donations settle to." },
 ];
 
 export default async function OnboardingPage({
@@ -98,7 +99,13 @@ export default async function OnboardingPage({
               />
             )}
             {step === 3 && <PlanStep plan={sub?.plan ?? "starter"} cycle={sub?.cycle ?? "monthly"} />}
-            {step === 4 && gateway && <GatewayStep summary={gateway} />}
+            {step === 4 && gateway && (
+              <GatewayStep
+                summary={gateway}
+                offered={OFFERED_ORG_GATEWAY}
+                environment={wevendEnvironment()}
+              />
+            )}
           </CardContent>
         </Card>
       </main>

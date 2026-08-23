@@ -50,7 +50,7 @@ was explicitly asked for.
 | `/dashboard/recurring` | — | `action` | `q` | `document`, `nav` |
 | `/dashboard/reports` | — | — | — | `document`, `nav` |
 | `/dashboard/security` | — | `activateAction`, `disableAction` | `code` | `document`, `nav`, `navigator`, `start` |
-| `/dashboard/settings` | `https://dashboard.stripe.com/apikeys` | `action`, `disconnectGateway`, `formAction` | `addressLine1`, `authorizedSignatory`, `charityStatus`, `city`, `craRegistrationNumber`, `logo`, `minReceiptAmount`, `name`, `postalCode`, `primaryColor`, `province`, `receiptFooter`, `receiptLocality`, `receiptMessage` _+4_ | `document`, `e`, `nav`, `start` |
+| `/dashboard/settings` | `https://dashboard.stripe.com/apikeys` | `action`, `disconnectGateway`, `formAction` | `addressLine1`, `authorizedSignatory`, `charityStatus`, `city`, `craRegistrationNumber`, `email`, `logo`, `mid`, `minReceiptAmount`, `name`, `password`, `postalCode`, `primaryColor`, `province` _+8_ | `document`, `e`, `nav`, `start` |
 | `/dashboard/team` | — | `action`, `updateCampaign`, `updateEvent`, `updateMembershipPlan`, `updatePledge`, `updateTeamMember`, `updateTicketType`, `updateVolunteer` | `email`, `name`, `role` | `document`, `e`, `nav`, `run` |
 | `/dashboard/upgrade` | `/contact`, `/dashboard`, `/dashboard/billing` | — | — | `document`, `nav` |
 | `/dashboard/volunteers` | — | `action`, `updateCampaign`, `updateEvent`, `updateMembershipPlan`, `updatePledge`, `updateTeamMember`, `updateTicketType`, `updateVolunteer` | `email`, `firstName`, `lastName`, `phone`, `q`, `role`, `title`, `validUntil`, `volunteerId` | `document`, `nav`, `start` |

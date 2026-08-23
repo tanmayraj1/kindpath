@@ -22,7 +22,11 @@ import { Label } from "@/components/ui/label";
 import { FormAlert } from "@/components/ui/form-alert";
 import { SubmitButton } from "@/components/auth/submit-button";
 import { ActionButton } from "@/components/ui/action-button";
-import { GatewayForm, type GatewaySummary } from "@/components/dashboard/gateway-form";
+import {
+  GatewayForm,
+  type GatewaySummary,
+  type GatewayEnvironment,
+} from "@/components/dashboard/gateway-form";
 import { cn } from "@/lib/utils";
 
 const initial: OnboardingState = {};
@@ -325,14 +329,23 @@ export function PlanStep(props: { plan: string; cycle: string }) {
  * one Settings uses — the only thing added here is the finish/skip decision,
  * and the skip is deliberately a confirmed button rather than a quiet link.
  */
-export function GatewayStep({ summary }: { summary: GatewaySummary }) {
+export function GatewayStep({
+  summary,
+  offered,
+  environment,
+}: {
+  summary: GatewaySummary;
+  offered: "wevend" | "stripe";
+  environment: GatewayEnvironment;
+}) {
   const router = useRouter();
+  const providerLabel = offered === "stripe" ? "Stripe" : "WeVend";
   const [state, action] = useFormState(finishOnboarding, initial);
   const connected = summary.configured && !summary.error;
 
   return (
     <div className="flex flex-col gap-6">
-      <GatewayForm summary={summary} />
+      <GatewayForm summary={summary} offered={offered} environment={environment} />
 
       <div className="h-px bg-border" aria-hidden />
 
@@ -353,7 +366,7 @@ export function GatewayStep({ summary }: { summary: GatewaySummary }) {
               confirm={{
                 title: "Finish without a payment gateway?",
                 description:
-                  "Your giving page will be live, but donations made there will run on KindPath's platform account and will not reach your bank. You can connect Stripe any time from Settings → Payments.",
+                  "Your giving page will be live, but donations made there will run on KindPath's platform account and will not reach your bank. You can connect your merchant account any time from Settings → Payments.",
                 confirmLabel: "Finish without a gateway",
               }}
             >
@@ -363,8 +376,9 @@ export function GatewayStep({ summary }: { summary: GatewaySummary }) {
         </div>
         {!connected && (
           <p className="text-xs text-muted-foreground">
-            No Stripe account yet? Creating one takes a few minutes at stripe.com. Test keys work
-            here too — no real money moves until you swap in a live key.
+            {offered === "stripe"
+              ? "No Stripe account yet? Creating one takes a few minutes at stripe.com. Test keys work here too — no real money moves until you swap in a live key."
+              : `No ${providerLabel} merchant account yet? Ask KindPath support — we'll get WeVend to set one up for you, and you can finish this step later from Settings → Payments.`}
           </p>
         )}
       </form>

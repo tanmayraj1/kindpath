@@ -86,15 +86,16 @@ per month, driven by `/api/cron/billing`). Redirects to step 4. It used to set
 ### Step 4 — Get paid (`GatewayStep`)
 
 Renders **the same `GatewayForm`** as Settings → Payments
-(`src/components/dashboard/gateway-form.tsx`, actions `connectStripeAccount` /
-`disconnectGateway` in `src/app/(dashboard)/dashboard/actions.ts`; see
-`docs/13_PAYMENT_GATEWAYS.md` for what connecting does). Below it:
+(`src/components/dashboard/gateway-form.tsx`; offered gateway = **WeVend** via
+`src/lib/payments/offered.ts`, action `connectWeVendAccount` — Stripe's `connectStripeAccount`
+is retained but not offered; `disconnectGateway` in `src/app/(dashboard)/dashboard/actions.ts`;
+see `docs/13_PAYMENT_GATEWAYS.md`). Below it:
 
 - **Finish setup** — `finishOnboarding`. Disabled until a gateway is connected
   and readable. Sets `onboardedAt`, audits, redirects to the done screen.
 - **Skip for now** — `skipGatewayAndFinish`, behind a confirm dialog whose text
-  says plainly that donations will not reach the charity's bank until Stripe is
-  connected. Also sets `onboardedAt`. Returns `{ ok }` rather than redirecting,
+  says plainly that donations will not reach the charity's bank until a merchant
+  account is connected. Also sets `onboardedAt`. Returns `{ ok }` rather than redirecting,
   because `ActionButton` treats a thrown redirect as a failure; the client
   navigates on `ok`.
 
@@ -111,9 +112,10 @@ come back for the QR without re-running setup). Shows:
 - the giving URL (`givingPageUrl(slug)`) with copy + open, and the QR
   (`givingPageQr`, both in `src/lib/qr.ts` — one generator so the giving page and
   this screen produce the same image);
-- **an honest money statement**: Stripe test mode → "use 4242…, no real money
-  moves"; live → "a real card will be charged; refund from Stripe"; no gateway →
-  the warning block with a Connect Stripe button;
+- **an honest money statement**: WeVend sandbox (platform host) → "use WeVend's test
+  cards, no real money moves"; production → "a real card will be charged; refund from
+  KindPath"; (Stripe test/live wording retained for the hidden Stripe path); no gateway →
+  the warning block with a connect button;
 - "Go to dashboard".
 
 ## 2. What the dashboard says afterwards
@@ -134,7 +136,7 @@ sequenceDiagram
   participant A as Admin (browser)
   participant S as signupAction
   participant W as /dashboard/onboarding
-  participant G as connectStripeAccount
+  participant G as connectWeVendAccount
   participant F as finishOnboarding / skipGatewayAndFinish
   participant D as /dashboard/onboarding/done
   A->>S: org, name, email, password
@@ -144,9 +146,9 @@ sequenceDiagram
   W-->>A: step 2 (branding, skippable)
   A->>W: step 3 (plan → Subscription.update)
   W-->>A: step 4
-  alt connects Stripe
-    A->>G: sk_…, optional whsec_…
-    G->>G: probe /v1/balance, seal into posCredentialsRef, audit
+  alt connects WeVend merchant
+    A->>G: mid, termId, email, password
+    G->>G: probe /api/auth/token, seal into posCredentialsRef, audit
     A->>F: Finish setup
   else skips
     A->>F: confirm "Finish without a gateway"
@@ -162,8 +164,8 @@ sequenceDiagram
   recorded (`OrgUser.emailVerifiedAt`) for later use.
 - **No back-navigation between steps.** Every step is re-enterable by URL once step
   1 is saved, and everything is editable in Settings afterwards.
-- **No WeVend step.** The WeVend adapter exists but is blocked on a merchant ID
-  (`context.md`); the gateway step is Stripe-only and says so.
+- **Stripe is not offered.** Decision 2026-08-23: charities connect a WeVend merchant; the
+  Stripe form stays in the code behind `OFFERED_ORG_GATEWAY`.
 
 ## 5. Tests and gates
 

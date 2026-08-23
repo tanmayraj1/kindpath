@@ -1,8 +1,10 @@
 import { assessStripeAccount } from "./stripe-account";
+import { WeVendAdapter } from "./wevend-adapter";
 
 export type PlatformGatewayHealth =
   | { provider: string; checked: false; reason: string }
-  | { provider: "stripe"; checked: true; ok: boolean; country?: string; liveMode: boolean; reason?: string };
+  | { provider: "stripe"; checked: true; ok: boolean; country?: string; liveMode: boolean; reason?: string }
+  | { provider: "wevend"; checked: true; ok: boolean; environment: "sandbox" | "production" | "unknown"; reason?: string };
 
 let cache: { at: number; value: PlatformGatewayHealth } | null = null;
 const CACHE_MS = 10 * 60 * 1000;
@@ -26,7 +28,22 @@ export async function platformGatewayHealth(
   const provider = process.env.PAYMENT_PROVIDER ?? "unset";
   let value: PlatformGatewayHealth;
 
-  if (provider !== "stripe") {
+  if (provider === "wevend") {
+    // Authenticate as the platform merchant/org. A wrong password or MID is
+    // "down" for every org on the fallback, and nothing else reports it.
+    try {
+      const { environment } = await new WeVendAdapter().probe();
+      value = { provider: "wevend", checked: true, ok: true, environment };
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : "WeVend authentication failed";
+      // Config errors (missing env) are stable — cache them; network blips aren't.
+      if (/requires WEVEND_|authentication failed|Invalid|not found/i.test(reason)) {
+        value = { provider: "wevend", checked: true, ok: false, environment: WeVendAdapter.environmentOf(process.env.WEVEND_BASE_URL), reason };
+      } else {
+        return { provider: "wevend", checked: false, reason };
+      }
+    }
+  } else if (provider !== "stripe") {
     value = { provider, checked: false, reason: "no account-level check for this provider" };
   } else {
     const key = process.env.STRIPE_SECRET_KEY ?? "";

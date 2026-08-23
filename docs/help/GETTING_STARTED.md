@@ -2,7 +2,7 @@
 
 This is the guide for the person setting KindPath up for a temple, church, mosque
 or charity. No technical background needed. It takes about ten minutes plus
-however long Stripe takes.
+however long WeVend takes to issue your merchant account.
 
 ## 1. Create your account
 
@@ -40,31 +40,21 @@ Monthly or annual (annual is two months free). You can change plans any time.
 ### Step 4 — Get paid
 
 This is the step that matters. KindPath never holds your money; donations go
-straight to **your** Stripe account. Until you connect one, your giving page
-still works but the money does not reach you — and the dashboard will keep
+straight to **your** WeVend merchant account. Until you connect one, your giving
+page still works but the money does not reach you — and the dashboard will keep
 reminding you.
 
-**Don't have a Stripe account?** Go to stripe.com, create one for your
-organization, and finish its verification (Stripe asks for business and bank
-details — that's Stripe, not us). It takes a few minutes to start and a day or
-two for Stripe to finish verifying.
+**Don't have a WeVend merchant account?** Ask KindPath support — we'll have
+WeVend set one up for your organization. You'll receive a **Merchant ID (MID)**,
+a **Terminal ID** (usually `00000003`), and a **login email and password**.
 
-**Find your secret key:** in Stripe, open **Developers → API keys** and copy the
-**Secret key** (it starts with `sk_live_`). Paste it into KindPath and press
-**Connect account**. We check it with Stripe before saving, then encrypt it; you
-will never see it again here, only its last four characters.
+**Connect it:** enter those four things and press **Connect account**. We check
+them with WeVend before saving, then encrypt them; they are never shown again
+(only the last four characters of the merchant ID stay visible).
 
-**Test first if you want.** Stripe also has a test mode (toggle at the top of the
-Stripe dashboard); its key starts with `sk_test_`. Connect that and no real money
-moves — use card number `4242 4242 4242 4242` with any future expiry. When you're
-ready, come back to **Settings → Payments** and replace it with the live key.
-
-**Refunds (optional but recommended).** In Stripe, **Developers → Webhooks → Add
-destination**, URL `https://www.kind-path.org/api/webhooks/pos`, and choose the
-events `payment_intent.succeeded`, `payment_intent.payment_failed`,
-`charge.refunded`, `refund.created`. Copy the **Signing secret** (`whsec_…`) into
-the optional box in KindPath. With this, a refund you issue in Stripe
-automatically cancels the receipt in KindPath.
+**Refunds.** Issue refunds from inside KindPath (Donations → the gift → Refund)
+so the receipt is cancelled at the same time. A refund made directly in the
+WeVend portal does not reach KindPath — you'd then void the receipt by hand.
 
 Press **Finish setup**. (If you really must, **Skip for now** finishes without a
 gateway — you'll be told clearly that donations won't reach you yet.)
@@ -78,9 +68,10 @@ always available under **Giving page & QR** in the dashboard.
 
 ## 4. Make a test donation
 
-Open your giving page and give a small amount. In test mode use
-`4242 4242 4242 4242`; on a live key a real card is charged — refund it from Stripe
-afterwards. Within a minute the donor address you used receives a receipt email
+Open your giving page and give a small amount. You'll be taken to WeVend's secure
+card page and back. A real card is charged — refund it from KindPath afterwards
+(if KindPath tells you the platform is in WeVend's sandbox, use the test card
+numbers WeVend gave you instead). Within a minute the donor address you used receives a receipt email
 (an official donation receipt if you're registered, a payment confirmation if
 not), and the gift appears under **Donations** and **Receipts**.
 
@@ -102,7 +93,7 @@ to set up — to download receipts and manage recurring gifts.
 ## 6. Changing things later
 
 Everything from setup lives in **Settings**. Connecting, replacing or disconnecting
-your Stripe account is **Settings → Payments**.
+your WeVend merchant account is **Settings → Payments**.
 
 ## Need help?
 

@@ -357,8 +357,12 @@ silently no-op'd), `Field` (aria-invalid + aria-describedby), `Skeleton`/`PageSk
   be set up by the owner (docs/15 §5).
 - **Env**: `src/lib/env.ts` validates the *shape* of `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET`; `/api/ready` names
   missing/invalid vars. Pasted placeholders were the real-world failure.
-- **Standing blockers**: WeVend merchant ID (`WV-ISV-50001`); Resend region move for Quebec; rotate the Resend key seen in a
-  screenshot; Stripe platform key is sandbox.
+- **Gateway decision 2026-08-23 — WeVend, not Stripe.** The only Stripe account available was India-registered (cannot take
+  CAD; `/api/health` showed `payments.country:"IN"`). Charities are now offered a WeVend merchant connect
+  (`connectWeVendAccount`, probe-before-store, `OFFERED_ORG_GATEWAY` in `src/lib/payments/offered.ts`); Stripe code retained,
+  hidden. Platform default to be switched to `PAYMENT_PROVIDER=wevend` with the owner's merchant creds (docs/15 §2).
+- **Standing blockers**: WeVend sandbox ISV has no test merchant (`WV-ISV-50001`); Resend region move for Quebec; rotate the
+  Resend key seen in a screenshot.
 
 ## Tier 0 security backtest (2026-07-08, PASSED)
 Adversarial pass over everything built in Tier 0. Results:

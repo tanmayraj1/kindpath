@@ -326,3 +326,50 @@ describe("unsupported operations", () => {
     await expect(a.verifyWebhook({ headers: {}, body: "{}" })).rejects.toThrow(/does not send webhooks/);
   });
 });
+
+describe("probe", () => {
+  it("authenticates in merchant mode and reports the environment", async () => {
+    const calls: string[] = [];
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      calls.push(url);
+      expect(JSON.parse(String(init?.body))).toEqual({ mid: "RCTST1", email: "t@x.ca", password: "pw" });
+      return new Response(
+        JSON.stringify({ success: true, data: { accessToken: "tok", refreshToken: "r" } }),
+        { status: 200 }
+      );
+    }) as unknown as typeof fetch;
+    const a = new (await import("./wevend-adapter")).WeVendAdapter({
+      baseUrl: "https://wepay.wevend.dev",
+      iframeUrl: "https://iframe.wevend.dev",
+      mid: "RCTST1",
+      termId: "00000003",
+      email: "t@x.ca",
+      password: "pw",
+      fetchImpl,
+    });
+    await expect(a.probe()).resolves.toEqual({ environment: "sandbox" });
+    expect(calls).toEqual(["https://wepay.wevend.dev/api/auth/token"]);
+  });
+
+  it("rejects bad credentials with WeVend's message", async () => {
+    const fetchImpl = (async () =>
+      new Response(JSON.stringify({ success: false, message: "Merchant not found" }), { status: 401 })) as unknown as typeof fetch;
+    const a = new (await import("./wevend-adapter")).WeVendAdapter({
+      baseUrl: "https://wepay.wevend.pro",
+      iframeUrl: "https://iframe.wevend.pro",
+      mid: "X",
+      termId: "1",
+      email: "t@x.ca",
+      password: "pw",
+      fetchImpl,
+    });
+    await expect(a.probe()).rejects.toThrow(/Merchant not found/);
+  });
+
+  it("names the environment from the host", async () => {
+    const { WeVendAdapter } = await import("./wevend-adapter");
+    expect(WeVendAdapter.environmentOf("https://wepay.wevend.dev/api")).toBe("sandbox");
+    expect(WeVendAdapter.environmentOf("https://wepay.wevend.pro")).toBe("production");
+    expect(WeVendAdapter.environmentOf("")).toBe("unknown");
+  });
+});

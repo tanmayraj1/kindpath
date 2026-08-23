@@ -9,6 +9,7 @@ import { requireOrgAdmin } from "@/lib/auth/guards";
 import { getOrg } from "@/lib/queries/org";
 import { describeOrgGatewayCredentials } from "@/lib/payments/org-credentials";
 import { givingPageQr } from "@/lib/qr";
+import { wevendEnvironment } from "@/lib/payments/offered";
 import { cn } from "@/lib/utils";
 
 export const metadata = { title: "You're set up" };
@@ -32,7 +33,13 @@ export default async function OnboardingDonePage() {
     givingPageQr(org.slug),
   ]);
   const connected = gateway.configured && !gateway.error;
-  const testMode = connected && gateway.provider === "stripe" && !gateway.liveMode;
+  // "Would a donation made right now move real money?" — Stripe says so per key;
+  // WeVend says so per platform host.
+  const wevendEnv = wevendEnvironment();
+  const testMode =
+    connected &&
+    (gateway.provider === "stripe" ? !gateway.liveMode : wevendEnv === "sandbox");
+  const refundWhere = gateway.provider === "stripe" ? "your Stripe dashboard" : "your WeVend merchant portal";
 
   return (
     <>
@@ -77,7 +84,7 @@ export default async function OnboardingDonePage() {
                 </p>
               </CardHeader>
               <CardContent className="flex flex-col gap-3 text-sm">
-                {testMode ? (
+                {testMode && gateway.provider === "stripe" ? (
                   <p>
                     Your Stripe account is in <span className="font-semibold">test mode</span>, so
                     use the card{" "}
@@ -85,11 +92,17 @@ export default async function OnboardingDonePage() {
                     with any future expiry and any CVC. No real money moves. When you&apos;re ready
                     to take real donations, swap in your live key under Settings → Payments.
                   </p>
+                ) : testMode ? (
+                  <p>
+                    Your merchant is connected to WeVend&apos;s{" "}
+                    <span className="font-semibold">sandbox</span>: use the test card numbers
+                    WeVend gave you. No real money moves.
+                  </p>
                 ) : (
                   <p>
-                    Your Stripe account is <span className="font-semibold">live</span>: a real card
-                    will be charged. Give a small amount and refund it from your Stripe dashboard
-                    afterwards — the receipt is cancelled automatically when the refund lands.
+                    Your merchant account is <span className="font-semibold">live</span>: a real
+                    card will be charged. Give a small amount and refund it from {refundWhere}{" "}
+                    afterwards — the receipt is cancelled when the refund is recorded.
                   </p>
                 )}
                 <div>
@@ -117,7 +130,7 @@ export default async function OnboardingDonePage() {
                 </div>
                 <div>
                   <Link href="/dashboard/settings#payments" className={buttonVariants({ size: "sm" })}>
-                    Connect Stripe
+                    Connect your merchant account
                   </Link>
                 </div>
               </div>

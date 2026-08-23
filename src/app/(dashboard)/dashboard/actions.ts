@@ -17,6 +17,7 @@ import { revokeSessions } from "@/lib/auth/revocation";
 
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { audit } from "@/lib/audit";
+import { captureError } from "@/lib/observability";
 import { assertBillingActive } from "@/lib/access";
 
 export type ActionState = { error?: string; ok?: boolean; fields?: FieldErrors };
@@ -1781,6 +1782,92 @@ export async function connectStripeAccount(
     // The mode, not the key. Which account it is matters for support; the secret
     // must never reach the audit log.
     after: { liveMode: parsed.data.secretKey.startsWith("sk_live_"), country: assessed.country },
+    ip: clientIp(),
+  });
+
+  revalidatePath("/dashboard/settings");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+/**
+ * Connect the organization's own WeVend merchant.
+ *
+ * Same contract as the Stripe path: prove it works BEFORE storing (the adapter's
+ * probe authenticates with mid + email + password — a wrong MID fails here, not
+ * at a donor's first gift), seal at rest, audit the tail only. WeVend has no
+ * test/live key distinction; the environment is the platform's `WEVEND_BASE_URL`
+ * and is reported to the admin rather than inferred.
+ */
+const wevendCredsSchema = z.object({
+  mid: z.string().trim().min(3, "Merchant ID is required").max(40),
+  termId: z.string().trim().min(1, "Terminal ID is required").max(20),
+  email: z.string().trim().email("Enter the merchant login email").max(254),
+  password: z.string().min(1, "Merchant password is required").max(200),
+});
+
+export async function connectWeVendAccount(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const session = await requireOrgAdmin();
+
+  const parsed = wevendCredsSchema.safeParse({
+    mid: formData.get("mid"),
+    termId: formData.get("termId"),
+    email: formData.get("email"),
+    password: formData.get("password"),
+  });
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    return { error: issue?.message ?? "Invalid input", fields: { [String(issue?.path[0])]: issue?.message ?? "" } };
+  }
+
+  const { wevendEnabled } = await import("@/lib/payments/offered");
+  if (!wevendEnabled()) {
+    return { error: "WeVend is not enabled on this platform yet. Contact KindPath support." };
+  }
+
+  const { WeVendAdapter } = await import("@/lib/payments/wevend-adapter");
+  let environment: "sandbox" | "production" | "unknown";
+  try {
+    const adapter = new WeVendAdapter({
+      mid: parsed.data.mid,
+      termId: parsed.data.termId,
+      email: parsed.data.email,
+      password: parsed.data.password,
+      wvNumber: "", // merchant mode, never the platform's org token
+    });
+    ({ environment } = await adapter.probe());
+  } catch (e) {
+    captureError(e, { source: "gateway.connect.wevend", orgId: session.orgId });
+    return {
+      error:
+        "WeVend rejected those credentials. Check the merchant ID, login email and password from your WeVend account.",
+      fields: { mid: "WeVend rejected these credentials" },
+    };
+  }
+
+  const { saveOrgGatewayCredentials } = await import("@/lib/payments/org-credentials");
+  const { invalidateOrgProvider } = await import("@/lib/payments");
+
+  await saveOrgGatewayCredentials(session.orgId, {
+    provider: "wevend",
+    mid: parsed.data.mid,
+    termId: parsed.data.termId,
+    email: parsed.data.email,
+    password: parsed.data.password,
+  });
+  invalidateOrgProvider(session.orgId);
+
+  await audit({
+    actor: { type: "org_user", id: session.sub },
+    orgId: session.orgId,
+    action: "org.gateway.connected.wevend",
+    entityType: "organization",
+    entityId: session.orgId,
+    // Never the password or the whole MID.
+    after: { midTail: parsed.data.mid.slice(-4), environment },
     ip: clientIp(),
   });
 
