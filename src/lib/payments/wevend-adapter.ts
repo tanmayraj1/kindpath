@@ -363,10 +363,22 @@ export class WeVendAdapter implements PaymentProvider {
    * amount is explicit — so this is NOT interchangeable with voidTransaction():
    * a void only works before settlement, and a completion cannot be voided at all.
    *
-   * `orderId` here is a fresh merchant reference for the refund transaction, not
-   * the original sale's. WeVend's spec lists it as required without saying which,
-   * and their response returns a new transaction record, which reads as "new
-   * reference". Confirm with WeVend before the first live refund.
+   * ⚠️ NOT USABLE AS WRITTEN — see below. Kept because the endpoint is correct and
+   * the shape is right; what is missing is a stored reference.
+   *
+   * WeVend confirmed (2026-08-28) that `orderId` must be **the original sale's**,
+   * not a fresh one — the gateway generates its own id for the refund. This code
+   * sends a fresh `orderId`, which is wrong. It cannot simply be fixed here
+   * either: the sale's `orderId` is generated inside `beginHostedSale` and never
+   * persisted, so there is nothing to send. Storing it on the donation row is the
+   * prerequisite for any API refund.
+   *
+   * WeVend also stated that as a matter of policy refunds should be issued
+   * through WeCenter rather than the API, so this path is not on the critical
+   * path today. The product consequence is documented in
+   * docs/13_PAYMENT_GATEWAYS.md: KindPath has no refund feature, and a refund
+   * made in WeCenter does not reach us, so the donor's tax receipt must be voided
+   * by hand.
    */
   async refund(input: RefundInput): Promise<RefundResult> {
     const body = await this.authed<{ returnCode?: string | number; transactionId?: string }>(

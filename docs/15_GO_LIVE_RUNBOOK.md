@@ -42,6 +42,22 @@ downgrade to Sending-only if it isn't already.
 
 ## 2. Payments — switching the platform to WeVend (decision 2026-08-23)
 
+**Sandbox credentials (received 2026-08-28).** Organization `WV-ISV-50001`, merchant
+**MID `RCTST0000048568`**, **TID `00000003`**, dev host `wepay.wevend.dev`.
+
+> ⚠️ The sandbox organization is **shared with WeVend's other customers** — WeVend asked us
+> not to change the global token. Treat those credentials as read-only.
+
+**Production is separate**: WeVend will issue a live MID/TID (contact: Layal). Do not assume
+the sandbox merchant has a production counterpart.
+
+**Status: the sandbox merchant cannot authorize a card yet.** Auth, merchant lookup and
+`/payments/sale` all succeed; the hosted card page renders; the card submission then fails with
+**"Transaction Unsuccessful — Code 500"** on *both* the Canadian (`iframe.wevend.dev`) and US
+(`iframe-us.wevend.dev`) hosts, so it is not a region mismatch. A 500 is a gateway-side error
+rather than a card decline (a decline returns a Fiserv code). Reported to WeVend; blocked on them.
+
+
 Stripe is being dropped as the platform default: the only account available was
 India-registered and cannot take CAD, and the product's client gateway is WeVend. The
 WeVend adapter is built and sandbox-verified; what it has always lacked is a **provisioned

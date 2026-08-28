@@ -144,6 +144,17 @@ No other decline scenarios are provisioned; request them from WeVend if needed.
 
 ### Void vs refund, and the refund gap
 
+**WeVend's answers (2026-08-28):** `orderId` on a refund must be **the original sale's**
+(the gateway issues its own id for the refund itself); **as a matter of policy refunds should
+be issued through WeCenter, not the API**; there is **no refund webhook**, and refunds are
+viewed in WeCenter. They offered to build a "refund receipt" feature — worth noting that this
+would not close our gap, which is *detection*, not paperwork: we need to know a refund happened
+so the CRA receipt can be voided.
+
+Consequence for the code: `WeVendAdapter.refund()` sends a fresh `orderId` and is therefore
+wrong, and cannot be corrected without first persisting the sale's `orderId` (it is generated
+inside `beginHostedSale` and never stored). Marked as such in the adapter.
+
 | Stage | Available |
 |---|---|
 | Sale / Pre-Auth, not settled | **Void** — `POST /api/payments/void`, `transactionId` only |

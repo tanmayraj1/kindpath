@@ -1,40 +1,62 @@
-# Draft email — WeVend integration requirements
+# WeVend correspondence
 
-> Keep their answers next to `docs/13_PAYMENT_GATEWAYS.md`; items 4 and 5 settle open
-> questions recorded there. Fill the `[ ]` placeholders before sending.
+## Answers received 2026-08-28
+
+| Question | Answer |
+|---|---|
+| Organization Global Token | Enabled. `wvNumber` = `WV-ISV-50001`. **Shared org — do not change the global token.** |
+| Sandbox merchant | MID `RCTST0000048568`, TID `00000003` |
+| CAD | Supported |
+| Refund `orderId` | The **original sale's**; the gateway issues its own id for the refund. **Policy: refund via WeCenter, not the API.** |
+| Refund notification | No webhook. Refunds are viewed in WeCenter. They offered to build a "refund receipt" feature. |
+| Production | Separate live MID/TID to be issued; contact Layal. |
+
+Recorded in `docs/13_PAYMENT_GATEWAYS.md` and `docs/15_GO_LIVE_RUNBOOK.md`.
 
 ---
 
-**Subject:** KindPath integration — sandbox merchant and organization token
+## Reply — sandbox authorization failing
+
+**Subject:** Re: KindPath integration — sandbox merchant returning Code 500 on authorization
 
 Hi [Name],
 
-Our WePay integration is built and authenticating successfully against
-`wepay.wevend.dev`. To finish testing we need:
+Thanks — that unblocked us, and the integration is nearly there. Everything up to the card
+authorization works against `RCTST0000048568`:
 
-1. **Organization Global Token** — confirmation it's enabled for us, our `wvNumber`, and
-   the credentials, for both dev and production.
-2. **A sandbox test merchant** under our organization — MID and terminal ID. Please send
-   the claim email to **[email address]**.
-3. **Canada / CAD confirmation** — our customers are Canadian registered charities and
-   donations must settle in CAD. Your FAQ notes test merchants are registered US-country,
-   so please confirm CAD is supported and register ours as Canadian if possible.
+- organization token issues correctly
+- the merchant resolves (a wrong MID is correctly rejected)
+- `/api/payments/sale` returns a `paymentOrderId`
+- the hosted card page loads
 
-Two things the documentation doesn't answer:
+**Where it stops:** submitting the test card `4111 1111 1111 1111` (12/30, any CVV) sits on
+"AUTHORIZING…" for roughly 45 seconds and then returns **"Transaction Unsuccessful — Code 500"**.
 
-4. On `refund-with-token`, is `orderId` a **new reference for the refund** or the
-   **original sale's**?
-5. Is there any webhook, callback or reporting endpoint that would tell us about a
-   **refund issued in the WePay portal**? Our customers issue official CRA tax receipts, so
-   a refund has to void the receipt — today a portal-initiated refund would be invisible to
-   us.
+We tried both card-entry hosts and got the identical result, so it doesn't appear to be a
+region issue:
 
-Also useful if you have them: test cards for decline scenarios (insufficient funds,
-do-not-honor).
+- `iframe.wevend.dev` — paymentOrderId `6a919dd226da2b1b08c1909c`
+- `iframe-us.wevend.dev` — paymentOrderId `6a919eaf26da2b1b08c1909e`
 
-Happy to jump on a call if that's quicker.
+A 500 reads as a gateway-side error rather than a card decline. Could you check whether the
+terminal on this merchant is fully provisioned against the processor? Happy to re-run any test
+you'd like.
+
+Two smaller things:
+
+1. Which card-entry host should we use for this merchant — the Canadian or the US one?
+2. On refunds: a refund receipt from WeCenter would be useful, but our actual gap is
+   **detection**. Our customers issue official CRA donation receipts, and when a gift is
+   refunded the receipt has to be voided — otherwise a valid tax receipt stands for money that
+   was returned. Without a notification we have no way to know a refund happened. Would either
+   of these be possible?
+   - a webhook on refund, or
+   - an endpoint we could poll — transactions (including refunds) for a merchant over a date
+     range — so a nightly job can reconcile.
+
+   Alternatively, does `get-transaction` on the original sale reflect a later refund? If so we
+   can reconcile with what already exists.
 
 Thanks,
 
 [Your name]
-[Title], KindPath
