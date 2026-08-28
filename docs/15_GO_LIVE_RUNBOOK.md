@@ -43,7 +43,17 @@ downgrade to Sending-only if it isn't already.
 ## 2. Payments — switching the platform to WeVend (decision 2026-08-23)
 
 **Sandbox credentials (received 2026-08-28).** Organization `WV-ISV-50001`, merchant
-**MID `RCTST0000048568`**, **TID `00000003`**, dev host `wepay.wevend.dev`.
+**MID `RCTST0000048568`**, **TID `00000002`**, dev host `wepay.wevend.dev`.
+
+> **TID matters.** WeVend first issued `00000003`, which is not enabled for testing: every
+> authorization returned "Transaction Unsuccessful — Code 500" while `/payments/sale` itself
+> succeeded. `00000002` works. A terminal id that creates orders but cannot authorize is not
+> something any of our own validation can detect — the sale call is happy — so if
+> authorizations fail with a 500 while everything else works, suspect the TID first.
+>
+> `00000002` also has **AVS enabled**: WeVend's card page asks for a Zip / Postal Code that
+> `00000003` did not. Nothing on our side sends it (the donor's address is collected after
+> payment, per the donate→address→receipt flow), so this is a donor-facing field only.
 
 > ⚠️ The sandbox organization is **shared with WeVend's other customers** — WeVend asked us
 > not to change the global token. Treat those credentials as read-only.
@@ -51,11 +61,11 @@ downgrade to Sending-only if it isn't already.
 **Production is separate**: WeVend will issue a live MID/TID (contact: Layal). Do not assume
 the sandbox merchant has a production counterpart.
 
-**Status: the sandbox merchant cannot authorize a card yet.** Auth, merchant lookup and
-`/payments/sale` all succeed; the hosted card page renders; the card submission then fails with
-**"Transaction Unsuccessful — Code 500"** on *both* the Canadian (`iframe.wevend.dev`) and US
-(`iframe-us.wevend.dev`) hosts, so it is not a region mismatch. A 500 is a gateway-side error
-rather than a card decline (a decline returns a Fiserv code). Reported to WeVend; blocked on them.
+**Status: verified end to end on 2026-08-28 (sandbox).** A $5.45 donation on `/give/test-parish`
+went: order created → redirect to `iframe.wevend.dev` → card `4111 1111 1111 1111` authorized →
+redirect back with `transactionId` → `confirmTransaction` (`respCode 000`, amount `5.00`, Visa
+`XXXXXXXXXXXX1111`) → donation recorded `succeeded` → **official donation receipt 2026-000001
+issued** → receipt email queued. The Canadian card-entry host serves this merchant correctly.
 
 
 Stripe is being dropped as the platform default: the only account available was

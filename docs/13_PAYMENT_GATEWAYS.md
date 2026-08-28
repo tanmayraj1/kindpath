@@ -135,6 +135,8 @@ Set by `WEVEND_IFRAME_URL`; it must match the merchant's region **and** the API 
 
 ### Test cards (sandbox)
 
+Verified working end to end against MID `RCTST0000048568` / TID `00000002` on 2026-08-28.
+
 | Scenario | PAN | Expiry |
 |---|---|---|
 | Approved | `4111 1111 1111 1111` | any future date |

@@ -47,7 +47,8 @@ reminding you.
 **Don't have a WeVend merchant account?** Ask KindPath support — we'll have
 WeVend set one up for your organization. You'll get a claim email from WeVend
 with a registration code; follow it, set your password, and you'll then have a
-**Merchant ID (MID)** and a **Terminal ID** (usually `00000003`).
+**Merchant ID (MID)** and a **Terminal ID**. Use exactly the values WeVend sends you —
+terminal IDs differ per merchant, and the wrong one fails only at the moment a donor pays.
 
 **Connect it:** enter the merchant ID and terminal ID, then press **Connect
 account**. We check the merchant ID with WeVend before saving.
