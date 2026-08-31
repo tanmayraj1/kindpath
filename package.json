@@ -28,6 +28,8 @@
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
+    "firebase": "^12.18.0",
+    "firebase-admin": "^14.3.0",
     "framer-motion": "^13.1.1",
     "jose": "^6.2.3",
     "lucide-react": "^0.408.0",
