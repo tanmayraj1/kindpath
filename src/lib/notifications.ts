@@ -107,6 +107,52 @@ export async function queueReceiptEmail(
   });
 }
 
+/**
+ * Ask a donor for the details a tax receipt legally needs, after they have paid.
+ *
+ * This is the counterpart to the email-only giving flow: the gift is already
+ * recorded and the money has moved, so the tone here is a confirmation that
+ * happens to carry a request — never a demand, and never something that reads as
+ * though the donation did not go through.
+ */
+export async function queueReceiptDetailsEmail(
+  tx: Tx,
+  args: {
+    orgId: string;
+    donorId: string;
+    donorEmail: string;
+    orgName: string;
+    donationId: string;
+    amount: number;
+    brandColor?: string | null;
+    logoUrl?: string | null;
+  }
+): Promise<QueuedEmail> {
+  const { detailsUrl } = await import("@/lib/receipt-details-link");
+  const html = emailLayout({
+    heading: `Thank you for your gift to ${escapeHtml(args.orgName)}`,
+    body:
+      `We received your donation of <strong>${formatCAD(args.amount)}</strong>. Thank you.` +
+      `<p style="margin-top:16px">To issue your <strong>official tax receipt</strong>, the Canada
+        Revenue Agency requires your full name and mailing address. It takes about a minute —
+        use the button below whenever it suits you.</p>` +
+      `<p style="margin-top:16px;font-size:13px;color:#64748b">
+        This link works for 90 days. Your gift is already recorded either way; if the link
+        expires, contact ${escapeHtml(args.orgName)} and they can finish it for you.</p>`,
+    cta: { label: "Get my tax receipt", url: detailsUrl(args.donationId) },
+    brand: { orgName: args.orgName, brandColor: args.brandColor, logoUrl: args.logoUrl },
+  });
+
+  return queue(tx, {
+    orgId: args.orgId,
+    donorId: args.donorId,
+    category: "receipt_details_request",
+    to: args.donorEmail,
+    subject: `Thanks for your gift — one step left for your tax receipt`,
+    html,
+  });
+}
+
 export async function queueBillingFailureEmail(
   tx: Tx,
   args: {

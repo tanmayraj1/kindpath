@@ -7,7 +7,7 @@ import { getPaymentProviderForOrg, supportsHostedSale } from "@/lib/payments";
 import { verifyHostedState, HOSTED_STATE_COOKIE } from "@/lib/hosted-state";
 import { signChargeToken } from "@/lib/charge-token";
 import { Branded } from "@/components/give/branded";
-import { HostedDetailsForm } from "@/components/give/hosted-details-form";
+import { HostedEmailForm } from "@/components/give/hosted-email-form";
 import { HostedTicketForm, HostedMembershipForm } from "@/components/give/hosted-purchase-form";
 import { Logo } from "@/components/brand/logo";
 import { buttonVariants } from "@/components/ui/button";
@@ -131,7 +131,8 @@ export default async function HostedResponsePage({
     );
   } else {
     form = (
-      <HostedDetailsForm
+      <HostedEmailForm
+        registered={org.charityStatus === "registered"}
         slug={params.slug}
         orgName={org.name}
         chargeRef={chargeRef}

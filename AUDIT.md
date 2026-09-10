@@ -15,7 +15,7 @@ python3 scripts/audit.py > AUDIT.md && git diff --stat AUDIT.md
 A non-empty diff means the reskin changed behaviour, and that is a bug unless it
 was explicitly asked for.
 
-**74 pages.**
+**75 pages.**
 
 | Route | Links | Server actions | Submitted fields | Handlers |
 |---|---|---|---|---|
@@ -75,7 +75,7 @@ was explicitly asked for.
 | `/dpa` | — | — | — | — |
 | `/e/[slug]/[event]` | — | `formAction` | `addressLine1`, `chargeRef`, `city`, `email`, `eventId`, `firstName`, `lastName`, `postalCode`, `province`, `quantity`, `slug`, `ticketTypeId` | `e`, `pay`, `setStep`, `setTtId` |
 | `/give/[slug]` | — | `completeFormAction` | `addressLine1`, `amount`, `campaignId`, `chargeRef`, `city`, `email`, `firstName`, `frequency`, `fundId`, `lastName`, `postalCode`, `province`, `slug` | `e`, `pay`, `setFrequency`, `setStep` |
-| `/give/[slug]/response` | — | `action` | `addressLine1`, `amount`, `campaignId`, `chargeRef`, `city`, `email`, `eventId`, `firstName`, `frequency`, `fundId`, `lastName`, `planId`, `postalCode`, `province` _+3_ | — |
+| `/give/[slug]/response` | — | `action` | `campaignId`, `chargeRef`, `email`, `eventId`, `frequency`, `fundId`, `planId`, `quantity`, `slug`, `ticketTypeId` | `setDetailsNow` |
 | `/join/[slug]` | — | `formAction` | `addressLine1`, `chargeRef`, `city`, `email`, `firstName`, `lastName`, `planId`, `postalCode`, `province`, `slug` | `pay`, `setPlanId`, `setStep` |
 | `/kiosk/[slug]` | — | `action` | `addressLine1`, `amount`, `campaignId`, `chargeRef`, `city`, `email`, `firstName`, `frequency`, `fundId`, `lastName`, `postalCode`, `province`, `slug` | `e`, `pay`, `reset`, `setAmount` |
 | `/mock-gateway/[paymentOrderId]` | — | — | — | `authorize` |
@@ -89,6 +89,7 @@ was explicitly asked for.
 | `/portal/recurring` | `/portal/payment-methods` | `updatePlanAmount` | — | `document`, `nav`, `start` |
 | `/privacy` | — | — | — | — |
 | `/r/[id]` | `/` | — | — | — |
+| `/receipt-details/[donationId]` | `/contact` | `action` | `addressLine1`, `city`, `donationId`, `firstName`, `lastName`, `phone`, `postalCode`, `province`, `token` | — |
 | `/terms` | — | — | — | — |
 | `/volunteer` | — | — | — | `document`, `nav` |
 | `/volunteer/profile` | — | `action` | `currentPassword`, `newPassword` | `document`, `nav` |

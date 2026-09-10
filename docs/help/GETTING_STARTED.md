@@ -77,11 +77,26 @@ always available under **Giving page & QR** in the dashboard.
 ## 4. Make a test donation
 
 Open your giving page and give a small amount. You'll be taken to WeVend's secure
-card page and back. A real card is charged — refund it from KindPath afterwards
-(if KindPath tells you the platform is in WeVend's sandbox, use the test card
-numbers WeVend gave you instead). Within a minute the donor address you used receives a receipt email
-(an official donation receipt if you're registered, a payment confirmation if
-not), and the gift appears under **Donations** and **Receipts**.
+card page and back. A real card is charged — refund it from your WeVend portal
+afterwards (if KindPath tells you the platform is in WeVend's sandbox, use the
+test card numbers WeVend gave you instead).
+
+**What your donors experience.** After paying they're asked for one thing: their
+email address. That's deliberate — nobody standing at a terminal or holding a
+phone in a pew wants to type a full mailing address, and making them do it is how
+you lose the gift halfway through.
+
+- If you're a **registered charity**, they get an email with a link. Whenever it
+  suits them, they open it, add their name and address, and the official tax
+  receipt is issued and emailed straight away. The link works for 90 days.
+- If you're **not** a registered charity, their payment confirmation is emailed
+  immediately — no address is needed, because a confirmation isn't a tax document.
+- A donor who has given before, and whose address you already have, is never asked
+  again — their receipt arrives immediately.
+- A donor who'd rather finish on the spot can: "Add my details now instead".
+
+The gift is recorded and the money is yours the moment the card is approved,
+whether or not they ever complete the details.
 
 ## 5. Day to day
 
