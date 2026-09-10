@@ -30,3 +30,10 @@ next-env.d.ts
 # Confidential client API docs — never commit
 *.pdf
 firebase-service-account.json
+
+# Any other shape of credential file. `firebase-service-account.json` above
+# covers the exact name that leaked; these cover the next variant.
+*service-account*.json
+*serviceaccount*.json
+firebase-adminsdk-*.json
+*.p12
