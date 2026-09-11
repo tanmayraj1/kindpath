@@ -4,6 +4,7 @@ import { flushEmails, type QueuedEmail } from "@/lib/notifications";
 import { emailLayout, escapeHtml } from "@/lib/email";
 import { captureError, log } from "@/lib/observability";
 import { loadSegmentRecipients, type SegmentKey } from "@/lib/segments";
+import { appUrl as deploymentUrl } from "@/lib/app-url";
 
 /**
  * Draining a bulk email send.
@@ -27,7 +28,7 @@ const MAX_RECIPIENTS = 50_000;
 type Branding = { orgName: string; brandColor: string | null; logoUrl: string | null };
 
 function renderCampaignEmail(subject: string, message: string, brand: Branding): string {
-  const portalUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/portal/profile`;
+  const portalUrl = `${deploymentUrl()}/portal/profile`;
   return emailLayout({
     heading: escapeHtml(subject),
     body:

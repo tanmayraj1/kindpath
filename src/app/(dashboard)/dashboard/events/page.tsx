@@ -10,6 +10,7 @@ import { assertFeature } from "@/lib/access";
 import { listEvents } from "@/lib/queries/events";
 import { getOrg } from "@/lib/queries/org";
 import { formatCAD } from "@/lib/utils";
+import { appUrl as deploymentUrl } from "@/lib/app-url";
 
 export const metadata = { title: "Events" };
 
@@ -17,7 +18,7 @@ export default async function EventsPage() {
   const session = await requireOrgUser();
   await assertFeature(session.orgId, "events");
   const [events, org] = await Promise.all([listEvents(session.orgId), getOrg(session.orgId)]);
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const appUrl = deploymentUrl();
 
   return (
     <>

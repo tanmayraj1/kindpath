@@ -1,9 +1,10 @@
 import QRCode from "qrcode";
 import { BRAND_HEX } from "@/lib/brand";
+import { appUrl as deploymentUrl } from "@/lib/app-url";
 
 /** The public giving page for an org. Absolute, so it is safe in a QR code or an email. */
 export function givingPageUrl(slug: string): string {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const appUrl = deploymentUrl();
   return `${appUrl}/give/${slug}`;
 }
 

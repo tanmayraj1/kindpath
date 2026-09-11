@@ -69,6 +69,7 @@ export type WeVendConfig = {
 // (Fiserv Appendix A). `donorMessage` is deliberately narrower than the raw
 // meaning — see that file.
 import { isApprovedCode, donorMessage, describeResponseCode } from "./wevend-response-codes";
+import { appUrl as deploymentUrl } from "@/lib/app-url";
 
 type WeVendEnvelope<T> = {
   success?: boolean;
@@ -90,7 +91,7 @@ export class WeVendAdapter implements PaymentProvider {
     this.cfg = {
       baseUrl: WeVendAdapter.normalizeBase(opts?.baseUrl ?? process.env.WEVEND_BASE_URL ?? ""),
       iframeUrl: (opts?.iframeUrl ?? process.env.WEVEND_IFRAME_URL ?? "").replace(/\/$/, ""),
-      appUrl: (opts?.appUrl ?? process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, ""),
+      appUrl: (opts?.appUrl ?? deploymentUrl()).replace(/\/$/, ""),
       mid: opts?.mid ?? process.env.WEVEND_MID ?? "",
       termId: opts?.termId ?? process.env.WEVEND_TERM_ID ?? "",
       wvNumber: opts?.wvNumber ?? process.env.WEVEND_WV_NUMBER ?? "",

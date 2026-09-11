@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { appUrl as deploymentUrl } from "@/lib/app-url";
 
 /**
  * Signed, expiring access tokens for receipt PDFs, so public/email links don't
@@ -44,6 +45,6 @@ export function signedReceiptPath(receiptId: string): string {
 
 /** Absolute signed URL (for emails). */
 export function signedReceiptUrl(receiptId: string): string {
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const base = deploymentUrl();
   return `${base}${signedReceiptPath(receiptId)}`;
 }

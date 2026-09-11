@@ -1,6 +1,7 @@
 import { PLANS, planPrice } from "@/lib/plans";
+import { canonicalUrl as canonicalSiteUrl } from "@/lib/app-url";
 
-const SITE = process.env.NEXT_PUBLIC_APP_URL ?? "https://www.kind-path.org";
+const SITE = canonicalSiteUrl();
 
 /**
  * JSON-LD for the marketing pages.

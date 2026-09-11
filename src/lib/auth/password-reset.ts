@@ -4,6 +4,7 @@ import { adminDb } from "@/lib/db";
 import { hashPassword } from "./password";
 import { revokeSessions } from "./revocation";
 import type { SessionClaims } from "./jwt";
+import { appUrl as deploymentUrl } from "@/lib/app-url";
 
 /**
  * Single-use, expiring password reset + invitation tokens.
@@ -198,6 +199,6 @@ export async function invalidateTokensFor(principal: Principal, principalId: str
 
 /** Absolute URL a recipient clicks. Kept here so email + tests agree on the shape. */
 export function resetUrl(token: string): string {
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const base = deploymentUrl();
   return `${base}/reset?token=${encodeURIComponent(token)}`;
 }

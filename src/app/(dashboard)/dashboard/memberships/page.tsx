@@ -14,6 +14,7 @@ import { listMembershipPlans, listMembers } from "@/lib/queries/memberships";
 import { getOrg } from "@/lib/queries/org";
 import { parsePageParams } from "@/lib/pagination";
 import { formatCAD } from "@/lib/utils";
+import { appUrl as deploymentUrl } from "@/lib/app-url";
 
 export const metadata = { title: "Memberships" };
 
@@ -37,7 +38,7 @@ export default async function MembershipsPage({
     listMembers(session.orgId, parsePageParams(searchParams)),
     getOrg(session.orgId),
   ]);
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const appUrl = deploymentUrl();
   const joinUrl = `${appUrl}/join/${org?.slug}`;
 
   return (

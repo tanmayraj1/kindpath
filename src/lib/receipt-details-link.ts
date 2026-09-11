@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { appUrl as deploymentUrl } from "@/lib/app-url";
 
 /**
  * Signed link a donor follows to finish a tax receipt after they have already paid.
@@ -73,6 +74,6 @@ export function detailsPath(donationId: string): string {
 }
 
 export function detailsUrl(donationId: string): string {
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const base = deploymentUrl();
   return `${base}${detailsPath(donationId)}`;
 }

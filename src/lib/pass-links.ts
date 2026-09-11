@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { appUrl as deploymentUrl } from "@/lib/app-url";
 
 /**
  * Signed, expiring access tokens for volunteer pass verification pages, so the
@@ -45,6 +46,6 @@ export function signedPassPath(passId: string): string {
 
 /** Absolute signed URL (QR content / emails). */
 export function signedPassUrl(passId: string): string {
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const base = deploymentUrl();
   return `${base}${signedPassPath(passId)}`;
 }

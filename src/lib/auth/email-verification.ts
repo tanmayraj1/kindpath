@@ -4,6 +4,7 @@ import { adminDb } from "@/lib/db";
 import { issueResetToken } from "./password-reset";
 import { sendEmailWithRetry, emailLayout, escapeHtml } from "@/lib/email";
 import { captureError } from "@/lib/observability";
+import { appUrl as deploymentUrl } from "@/lib/app-url";
 
 /**
  * Email verification — built, recorded, and gating nothing yet.
@@ -24,7 +25,7 @@ function hashToken(raw: string): string {
 }
 
 function verifyUrl(token: string): string {
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const base = deploymentUrl();
   return `${base}/verify?token=${encodeURIComponent(token)}`;
 }
 

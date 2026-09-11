@@ -4,6 +4,7 @@ import { sendEmailWithRetry, emailLayout, escapeHtml } from "@/lib/email";
 import { captureError, log } from "@/lib/observability";
 import { audit } from "@/lib/audit";
 import { formatCAD } from "@/lib/utils";
+import { appUrl as deploymentUrl } from "@/lib/app-url";
 
 /**
  * KindPath's OWN revenue: charging organizations for the platform.
@@ -123,7 +124,7 @@ async function notifyOrgAdmins(
           body,
           cta: {
             label: "Open your dashboard",
-            url: `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/dashboard`,
+            url: `${deploymentUrl()}/dashboard`,
           },
           brand: { orgName: org?.name, brandColor: org?.primaryColor, logoUrl: org?.logoUrl },
         }),

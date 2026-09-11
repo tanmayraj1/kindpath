@@ -4,6 +4,7 @@ import { sendEmailWithRetry, emailLayout, escapeHtml, brandHex } from "@/lib/ema
 import { signedReceiptUrl } from "@/lib/receipt-links";
 import { captureError, log } from "@/lib/observability";
 import { formatCAD } from "@/lib/utils";
+import { appUrl as deploymentUrl } from "@/lib/app-url";
 
 /**
  * Transactional email dispatch, built as an OUTBOX.
@@ -78,7 +79,7 @@ export async function queueReceiptEmail(
   const subject = args.official
     ? `Your tax receipt ${args.serialNumber} from ${args.orgName}`
     : `Your payment confirmation from ${args.orgName}`;
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const base = deploymentUrl();
   const html = emailLayout({
     heading: `Thank you for your gift, ${escapeHtml(args.donorName.split(" ")[0] ?? "")}!`,
     body:
@@ -184,7 +185,7 @@ export async function queueBillingFailureEmail(
       // no way forward — which is precisely what made this email a dead end.
       // `next` carries them to the right page once they are in.
       label: "Manage payment method",
-      url: `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/login?next=%2Fportal%2Frecurring`,
+      url: `${deploymentUrl()}/login?next=%2Fportal%2Frecurring`,
     },
     brand: { orgName: args.orgName, brandColor: args.brandColor, logoUrl: args.logoUrl },
   });

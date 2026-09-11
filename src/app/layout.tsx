@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Instrument_Sans } from "next/font/google";
 import "./globals.css";
+import { canonicalUrl as canonicalSiteUrl } from "@/lib/app-url";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -23,7 +24,7 @@ const display = Instrument_Sans({
   weight: ["500", "600", "700"],
 });
 
-const SITE = process.env.NEXT_PUBLIC_APP_URL ?? "https://www.kind-path.org";
+const SITE = canonicalSiteUrl();
 
 export const metadata: Metadata = {
   // metadataBase is what makes every relative OG/canonical URL resolve to an

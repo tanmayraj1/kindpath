@@ -62,11 +62,16 @@ export function isSimulatedProvider(provider: string | undefined): boolean {
  * endpoint additionally refuses simulated events on any hosted deployment — see
  * src/app/api/webhooks/pos/route.ts — so this relaxation cannot reopen that hole.
  */
-export function simulatedGatewayAllowed(): boolean {
-  const vercelEnv = process.env.VERCEL_ENV;
+export function simulatedGatewayAllowed(
+  vercelEnv: string | undefined = process.env.VERCEL_ENV,
+  nodeEnv: string | undefined = process.env.NODE_ENV
+): boolean {
+  // Taken as parameters rather than read inline so the rule can be tested
+  // directly: bundlers substitute `process.env.NODE_ENV` at transform time, so a
+  // test that assigns it is not exercising what production would evaluate.
   if (vercelEnv) return vercelEnv !== "production";
   // Not on Vercel: allowed only outside a production build.
-  return process.env.NODE_ENV !== "production";
+  return nodeEnv !== "production";
 }
 
 export function missingEnv(): string[] {

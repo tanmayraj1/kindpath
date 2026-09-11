@@ -15,6 +15,7 @@ import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { signChargeToken, verifyChargeToken } from "@/lib/charge-token";
 import { signReceiptToken } from "@/lib/receipt-links";
 import { signHostedState, HOSTED_STATE_COOKIE, type HostedKind } from "@/lib/hosted-state";
+import { appUrl as deploymentUrl } from "@/lib/app-url";
 
 // ---------- step 1: authorize a charge (payment happens first) ----------
 export type ChargeState =
@@ -106,7 +107,7 @@ async function beginHosted(kind: HostedKind, input: HostedInput): Promise<Hosted
     return { ok: false, message: "Hosted payments are not enabled." };
   }
 
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const base = deploymentUrl();
   let init;
   try {
     init = await provider.beginHostedSale({

@@ -14,6 +14,7 @@ import { assertFeature } from "@/lib/access";
 import { getEvent } from "@/lib/queries/events";
 import { getOrg } from "@/lib/queries/org";
 import { formatCAD } from "@/lib/utils";
+import { appUrl as deploymentUrl } from "@/lib/app-url";
 
 // Static rather than generateMetadata: the detail pages already load their
 // record inside a withTenant transaction, and Prisma calls are not deduped
@@ -29,7 +30,7 @@ export default async function EventDetail({ params }: { params: { id: string } }
   await assertFeature(session.orgId, "events");
   const [e, org] = await Promise.all([getEvent(session.orgId, params.id), getOrg(session.orgId)]);
   if (!e) notFound();
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const appUrl = deploymentUrl();
 
   const stats = [
     { label: "Raised", value: formatCAD(e.raised, { maximumFractionDigits: 0 }), icon: DollarSign },

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { simulatedGatewayAllowed, isSimulatedProvider } from "./env";
 
 /**
@@ -6,50 +6,36 @@ import { simulatedGatewayAllowed, isSimulatedProvider } from "./env";
  * be demonstrated without a payment provider — but never on the production site,
  * because its webhook verifier accepts unsigned JSON.
  *
- * `NODE_ENV` cannot make that distinction: it is "production" for every Next.js
- * production build, preview deployments included. These tests pin the property
- * that actually matters — that the real site refuses to simulate.
+ * `NODE_ENV` alone cannot make that distinction: it is "production" for every
+ * Next.js production build, preview deployments included.
+ *
+ * The rule is exercised through explicit arguments rather than by mutating
+ * process.env, because bundlers substitute `process.env.NODE_ENV` at transform
+ * time — a test that assigns it proves nothing about what production evaluates.
  */
-const saved = { ...process.env };
-
-beforeEach(() => {
-  delete process.env.VERCEL_ENV;
-  delete process.env.NODE_ENV;
-});
-afterEach(() => {
-  process.env = { ...saved };
-});
-
 describe("simulatedGatewayAllowed", () => {
   it("REFUSES on the production deployment", () => {
-    process.env.VERCEL_ENV = "production";
-    process.env.NODE_ENV = "production";
-    expect(simulatedGatewayAllowed()).toBe(false);
+    expect(simulatedGatewayAllowed("production", "production")).toBe(false);
   });
 
   it("allows on a preview deployment, where NODE_ENV is also 'production'", () => {
-    // The whole reason this function exists: a preview build is NODE_ENV
+    // The whole reason this takes VERCEL_ENV: a preview build is NODE_ENV
     // production too, so keying on NODE_ENV would refuse a harmless demo.
-    process.env.VERCEL_ENV = "preview";
-    process.env.NODE_ENV = "production";
-    expect(simulatedGatewayAllowed()).toBe(true);
+    expect(simulatedGatewayAllowed("preview", "production")).toBe(true);
   });
 
   it("allows on Vercel's development environment", () => {
-    process.env.VERCEL_ENV = "development";
-    expect(simulatedGatewayAllowed()).toBe(true);
+    expect(simulatedGatewayAllowed("development", "production")).toBe(true);
   });
 
   it("allows in local development", () => {
-    process.env.NODE_ENV = "development";
-    expect(simulatedGatewayAllowed()).toBe(true);
+    expect(simulatedGatewayAllowed(undefined, "development")).toBe(true);
   });
 
   it("REFUSES a self-hosted production build, which reports no VERCEL_ENV at all", () => {
     // Absent VERCEL_ENV must not read as "not production" — that would let a
     // self-hosted real deployment simulate payments.
-    process.env.NODE_ENV = "production";
-    expect(simulatedGatewayAllowed()).toBe(false);
+    expect(simulatedGatewayAllowed(undefined, "production")).toBe(false);
   });
 });
 

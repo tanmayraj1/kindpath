@@ -8,6 +8,7 @@ import { assertFeature } from "@/lib/access";
 import { getOrg } from "@/lib/queries/org";
 import { cn } from "@/lib/utils";
 import { givingPageQr } from "@/lib/qr";
+import { appUrl as deploymentUrl } from "@/lib/app-url";
 
 export const metadata = { title: "Giving page & QR" };
 
@@ -17,7 +18,7 @@ export default async function GivingPage() {
   const org = await getOrg(session.orgId);
   const slug = org?.slug ?? "";
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const appUrl = deploymentUrl();
   const { url: giveUrl, dataUrl: qrDataUrl } = await givingPageQr(slug);
 
   return (

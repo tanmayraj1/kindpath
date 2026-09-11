@@ -10,6 +10,7 @@ import { withTenant } from "@/lib/tenant";
 import { retryPlanForDonor } from "@/lib/billing";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { formErrors, type FieldErrors } from "@/lib/validation";
+import { appUrl as deploymentUrl } from "@/lib/app-url";
 
 export type PortalState = { error?: string; ok?: boolean; fields?: FieldErrors };
 
@@ -289,7 +290,7 @@ export async function beginCardUpdate(planId: string): Promise<CardUpdateStart> 
   }
 
   const amount = Number(ctx.plan.amount);
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const base = deploymentUrl();
 
   let init;
   try {
