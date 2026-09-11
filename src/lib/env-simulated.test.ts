@@ -37,6 +37,18 @@ describe("simulatedGatewayAllowed", () => {
     // self-hosted real deployment simulate payments.
     expect(simulatedGatewayAllowed(undefined, "production")).toBe(false);
   });
+
+  it("allows production ONLY with the explicit opt-in", () => {
+    expect(simulatedGatewayAllowed("production", "production", "yes")).toBe(true);
+  });
+
+  it("ignores a half-hearted opt-in value", () => {
+    // Anything but the exact token leaves production refusing, so a stray
+    // "true"/"1"/"" cannot switch the real site into simulation.
+    for (const v of ["true", "1", "YES", "", " yes", undefined]) {
+      expect(simulatedGatewayAllowed("production", "production", v)).toBe(false);
+    }
+  });
 });
 
 describe("isSimulatedProvider", () => {

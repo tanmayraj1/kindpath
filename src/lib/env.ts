@@ -64,11 +64,20 @@ export function isSimulatedProvider(provider: string | undefined): boolean {
  */
 export function simulatedGatewayAllowed(
   vercelEnv: string | undefined = process.env.VERCEL_ENV,
-  nodeEnv: string | undefined = process.env.NODE_ENV
+  nodeEnv: string | undefined = process.env.NODE_ENV,
+  optIn: string | undefined = process.env.ALLOW_SIMULATED_GATEWAY
 ): boolean {
   // Taken as parameters rather than read inline so the rule can be tested
   // directly: bundlers substitute `process.env.NODE_ENV` at transform time, so a
   // test that assigns it is not exercising what production would evaluate.
+
+  // The production site may simulate ONLY behind an explicit opt-in. Demoing the
+  // donation flow on the real domain is a legitimate thing to want; doing it by
+  // accident, or leaving it on after the demo, is not. This makes it a decision
+  // someone took, and /api/health reports the deployment as not-ok for as long as
+  // it is set, so "we'll take it down after" cannot quietly become permanent.
+  if (optIn === "yes") return true;
+
   if (vercelEnv) return vercelEnv !== "production";
   // Not on Vercel: allowed only outside a production build.
   return nodeEnv !== "production";

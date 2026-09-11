@@ -4,7 +4,8 @@ import { WeVendAdapter } from "./wevend-adapter";
 export type PlatformGatewayHealth =
   | { provider: string; checked: false; reason: string }
   | { provider: "stripe"; checked: true; ok: boolean; country?: string; liveMode: boolean; reason?: string }
-  | { provider: "wevend"; checked: true; ok: boolean; environment: "sandbox" | "production" | "unknown"; reason?: string };
+  | { provider: "wevend"; checked: true; ok: boolean; environment: "sandbox" | "production" | "unknown"; reason?: string }
+  | { provider: string; checked: true; ok: boolean; simulated: true; reason: string };
 
 let cache: { at: number; value: PlatformGatewayHealth } | null = null;
 const CACHE_MS = 10 * 60 * 1000;
@@ -28,7 +29,22 @@ export async function platformGatewayHealth(
   const provider = process.env.PAYMENT_PROVIDER ?? "unset";
   let value: PlatformGatewayHealth;
 
-  if (provider === "wevend") {
+  if (provider === "mock" || provider === "mock-hosted") {
+    // Reported as NOT ok on the real site, deliberately. Nothing is broken — but
+    // a production deployment that cannot take real money is a state someone has
+    // to notice and undo, so an uptime monitor should keep saying so until they
+    // do. On a preview this is the expected state, so it reads as ok.
+    const onProduction = process.env.VERCEL_ENV === "production";
+    value = {
+      provider,
+      checked: true,
+      ok: !onProduction,
+      simulated: true,
+      reason: onProduction
+        ? "the production site is running a SIMULATED gateway (ALLOW_SIMULATED_GATEWAY=yes) — no donation here is real; unset it to resume taking payments"
+        : "simulated gateway on a non-production deployment",
+    };
+  } else if (provider === "wevend") {
     // Authenticate as the platform merchant/org. A wrong password or MID is
     // "down" for every org on the fallback, and nothing else reports it.
     try {
