@@ -44,6 +44,31 @@ let validated = false;
  * the source doesn't have — while the fact that the app is misconfigured is
  * already evident from the 500s it is emitted to explain.
  */
+export function isSimulatedProvider(provider: string | undefined): boolean {
+  return provider === "mock" || provider === "mock-hosted";
+}
+
+/**
+ * May the simulated gateway run on this deployment?
+ *
+ * `NODE_ENV` is "production" for EVERY Next.js production build, including
+ * Vercel preview deployments, so it cannot tell "the real site" from "a throwaway
+ * demo URL" — which is why this keys on `VERCEL_ENV` instead.
+ *
+ * Preview and development deployments may simulate. The production deployment
+ * may not, and neither may a self-hosted production build (no VERCEL_ENV at all),
+ * because the mock's webhook verifier accepts unsigned JSON: wherever it runs,
+ * /api/webhooks/pos becomes an unauthenticated way to void tax receipts. That
+ * endpoint additionally refuses simulated events on any hosted deployment — see
+ * src/app/api/webhooks/pos/route.ts — so this relaxation cannot reopen that hole.
+ */
+export function simulatedGatewayAllowed(): boolean {
+  const vercelEnv = process.env.VERCEL_ENV;
+  if (vercelEnv) return vercelEnv !== "production";
+  // Not on Vercel: allowed only outside a production build.
+  return process.env.NODE_ENV !== "production";
+}
+
 export function missingEnv(): string[] {
   const isProd = process.env.NODE_ENV === "production";
   const missing: string[] = [];
@@ -66,11 +91,11 @@ export function missingEnv(): string[] {
     const provider = process.env.PAYMENT_PROVIDER;
     if (!provider) {
       missing.push("PAYMENT_PROVIDER (must be 'stripe' or 'wevend' in production)");
-    } else if (provider === "mock" || provider === "mock-hosted") {
+    } else if ((provider === "mock" || provider === "mock-hosted") && !simulatedGatewayAllowed()) {
       missing.push(
         `PAYMENT_PROVIDER is '${provider}' — the simulated gateway must never run in production`
       );
-    } else if (provider !== "stripe" && provider !== "wevend") {
+    } else if (provider !== "stripe" && provider !== "wevend" && !isSimulatedProvider(provider)) {
       missing.push(`PAYMENT_PROVIDER '${provider}' is not a known provider`);
     }
 

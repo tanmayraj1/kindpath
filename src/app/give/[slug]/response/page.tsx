@@ -6,6 +6,7 @@ import { adminDb } from "@/lib/db";
 import { getPaymentProviderForOrg, supportsHostedSale } from "@/lib/payments";
 import { verifyHostedState, HOSTED_STATE_COOKIE } from "@/lib/hosted-state";
 import { signChargeToken } from "@/lib/charge-token";
+import { SimulatedGatewayBanner } from "@/components/give/simulated-banner";
 import { Branded } from "@/components/give/branded";
 import { HostedEmailForm } from "@/components/give/hosted-email-form";
 import { HostedTicketForm, HostedMembershipForm } from "@/components/give/hosted-purchase-form";
@@ -148,6 +149,10 @@ export default async function HostedResponsePage({
 
   return (
     <Branded color={org.primaryColor}>
+      {/* Also here, not just on the giving page: this is the screen that says
+          "Payment received", which is exactly where a simulated gift would be
+          mistaken for a real one. */}
+      <SimulatedGatewayBanner />
       <div className="container flex min-h-dvh items-start justify-center py-10 sm:py-16">
         <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-lg sm:p-8">
           {form}

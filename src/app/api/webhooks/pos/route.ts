@@ -6,6 +6,7 @@ import type { PaymentEvent } from "@/lib/payments/types";
 import { handlePaymentEvent } from "@/lib/payment-events";
 import { captureError, log } from "@/lib/observability";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { isSimulatedProvider } from "@/lib/env";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,6 +27,23 @@ const MAX_BODY_BYTES = 64 * 1024;
 export async function POST(req: Request) {
   if (!(await rateLimit(`webhook-pos:${clientIp()}`, 60, 60_000)).ok) {
     return Response.json({ error: "too many requests" }, { status: 429 });
+  }
+
+  // The simulated gateway's verifier accepts unsigned JSON, so on any hosted
+  // deployment this endpoint would become an unauthenticated way to void a
+  // charity's tax receipts. Simulated events are therefore accepted only when
+  // running off-Vercel (local development). Preview deployments may simulate
+  // donations — see simulatedGatewayAllowed() — but never inbound webhooks.
+  if (isSimulatedProvider(process.env.PAYMENT_PROVIDER) && process.env.VERCEL) {
+    log("warn", "simulated webhook refused on a hosted deployment", {
+      source: "webhook.pos",
+      provider: process.env.PAYMENT_PROVIDER,
+      ip: clientIp(),
+    });
+    return Response.json(
+      { error: "the simulated gateway does not accept webhooks on a hosted deployment" },
+      { status: 403 }
+    );
   }
 
   const body = await req.text();

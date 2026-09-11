@@ -6,6 +6,7 @@ import { DonationFlow } from "@/components/give/donation-flow";
 import { Branded } from "@/components/give/branded";
 import { getPublicOrg } from "@/lib/queries/public";
 import { orgUsesHostedFlow } from "@/lib/payments/hosted";
+import { SimulatedGatewayBanner } from "@/components/give/simulated-banner";
 
 export async function generateMetadata({
   params,
@@ -22,6 +23,7 @@ export default async function GivePage({ params }: { params: { slug: string } })
 
   return (
     <Branded color={org.primaryColor} className="relative min-h-screen overflow-hidden bg-secondary/40">
+      <SimulatedGatewayBanner />
       <div
         aria-hidden
         className="pointer-events-none absolute -top-40 left-1/2 -z-10 size-[40rem] -translate-x-1/2 rounded-full bg-brand-gradient opacity-20 blur-[120px]"
