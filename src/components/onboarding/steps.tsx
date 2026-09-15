@@ -373,7 +373,7 @@ export function GatewayStep({
               confirm={{
                 title: "Finish without a payment gateway?",
                 description:
-                  "Your giving page will be live, but donations made there will run on KindPath's platform account and will not reach your bank. You can connect your merchant account any time from Settings → Payments.",
+                  "Your giving page will be live but won't take payments — donors will see that online giving is opening soon. Connect your WeVend merchant account any time from Settings → Payments.",
                 confirmLabel: "Finish without a gateway",
               }}
             >

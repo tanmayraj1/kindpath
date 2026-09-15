@@ -280,8 +280,8 @@ export async function beginCardUpdate(planId: string): Promise<CardUpdateStart> 
   }
 
   const { getPaymentProviderForOrg, supportsHostedSale } = await import("@/lib/payments");
-  const provider = await getPaymentProviderForOrg(session.orgId);
-  if (!supportsHostedSale(provider)) {
+  const provider = await getPaymentProviderForOrg(session.orgId).catch(() => null);
+  if (!provider || !supportsHostedSale(provider)) {
     return {
       ok: false,
       message:

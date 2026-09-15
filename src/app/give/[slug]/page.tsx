@@ -5,7 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { DonationFlow } from "@/components/give/donation-flow";
 import { Branded } from "@/components/give/branded";
 import { getPublicOrg } from "@/lib/queries/public";
-import { orgUsesHostedFlow } from "@/lib/payments/hosted";
+import { orgPaymentReadiness } from "@/lib/payments/hosted";
+import { GivingClosed } from "@/components/give/giving-closed";
 import { SimulatedGatewayBanner } from "@/components/give/simulated-banner";
 
 export async function generateMetadata({
@@ -20,6 +21,7 @@ export async function generateMetadata({
 export default async function GivePage({ params }: { params: { slug: string } }) {
   const org = await getPublicOrg(params.slug);
   if (!org) notFound();
+  const readiness = await orgPaymentReadiness(org.id);
 
   return (
     <Branded color={org.primaryColor} className="relative min-h-screen overflow-hidden bg-secondary/40">
@@ -41,7 +43,11 @@ export default async function GivePage({ params }: { params: { slug: string } })
       </header>
 
       <main className="container flex items-start justify-center py-10 sm:py-16">
-        <DonationFlow org={org} hosted={await orgUsesHostedFlow(org.id)} />
+        {readiness.status === "ready" ? (
+          <DonationFlow org={org} hosted={readiness.hosted} />
+        ) : (
+          <GivingClosed orgName={org.name} />
+        )}
       </main>
     </Branded>
   );

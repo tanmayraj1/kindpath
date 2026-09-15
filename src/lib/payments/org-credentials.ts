@@ -88,8 +88,16 @@ export function parseCredentials(plain: string): OrgGatewayCredentials | null {
 
     if (parsed.provider === "wevend") {
       const c = parsed as Partial<WeVendCredentials>;
-      if (!c.mid || !c.password || !c.termId) return null;
-      // Exactly one auth mode must be identifiable.
+      if (!c.mid || !c.termId) return null;
+      // No password: the merchant is addressed under the PLATFORM's organization
+      // token, which is exactly what connectWeVendAccount stores when the
+      // platform holds one. This used to require a password, so every charity
+      // connected that way read back as "unreadable" and had donations refused.
+      if (!c.password) {
+        if (c.email || c.wvNumber) return null; // a login with no password is half a credential
+        return { provider: "wevend", mid: c.mid, termId: c.termId };
+      }
+      // Own login: exactly one auth mode must be identifiable.
       if (!c.email && !c.wvNumber) return null;
       return {
         provider: "wevend",

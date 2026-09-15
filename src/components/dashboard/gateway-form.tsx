@@ -117,9 +117,9 @@ export function GatewayForm({
           <div>
             <p className="font-semibold">No gateway connected</p>
             <p className="text-muted-foreground">
-              Until you connect one, donations run on KindPath&apos;s platform account and do not
-              settle to you. Connect your own {providerLabel} merchant account to receive money
-              directly.
+              Until you connect your {providerLabel} merchant account, your giving page tells donors
+              online giving is opening soon and takes no payments. Donations settle directly to
+              your account — KindPath never holds them.
             </p>
           </div>
         </div>
@@ -256,7 +256,7 @@ export function GatewayForm({
               confirm={{
                 title: "Disconnect this gateway?",
                 description:
-                  "New donations will fall back to KindPath's platform account until you connect one again. Existing receipts and giving history are untouched.",
+                  "Your giving page will stop taking payments until you connect one again. Existing receipts and giving history are untouched.",
                 confirmLabel: "Disconnect",
                 destructive: true,
               }}

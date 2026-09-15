@@ -124,8 +124,8 @@ export default async function OnboardingDonePage() {
                 <div>
                   <p className="font-semibold">You can&apos;t receive donations yet</p>
                   <p className="text-muted-foreground">
-                    Your giving page is live, but until a payment gateway is connected donations run
-                    on KindPath&apos;s platform account and do not settle to {org.name}.
+                    Your giving page is live, but until your WeVend merchant account is connected it
+                    tells donors online giving is opening soon and takes no payments.
                   </p>
                 </div>
                 <div>

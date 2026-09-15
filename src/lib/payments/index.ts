@@ -61,8 +61,12 @@ export async function getPaymentProviderForOrg(orgId: string): Promise<PaymentPr
     throw new Error(`Payment gateway unavailable for this organization: ${load.reason}`);
   }
 
-  // Never configured → the platform default is what's intended.
+  // Never configured → the platform default, where that means anything.
   if (load.status === "none") {
+    if (!platformFallbackAllowed()) {
+      // Not cached: the moment the org connects, the next request must see it.
+      throw new GatewayNotConnectedError(orgId);
+    }
     const fallback = getPaymentProvider();
     orgProviders.set(orgId, fallback);
     return fallback;
@@ -77,7 +81,10 @@ export async function getPaymentProviderForOrg(orgId: string): Promise<PaymentPr
         // also has organization credentials in the environment — letting
         // `wvNumber` fall through to env would silently switch such an org onto
         // the platform's organization token.
-        creds.email && creds.password
+        creds.wvNumber && creds.password
+        ? // An organization login stored for this org (platform admin panel).
+          new WeVendAdapter({ mid: creds.mid, termId: creds.termId, wvNumber: creds.wvNumber, password: creds.password })
+        : creds.email && creds.password
         ? new WeVendAdapter({
             mid: creds.mid,
             termId: creds.termId,
@@ -91,6 +98,42 @@ export async function getPaymentProviderForOrg(orgId: string): Promise<PaymentPr
 
   orgProviders.set(orgId, built);
   return built;
+}
+
+/**
+ * The org has no gateway of its own and may not borrow the platform's.
+ *
+ * A distinct class so public pages can show "not accepting online gifts yet"
+ * instead of an error, and money paths can refuse with a sentence a donor
+ * understands.
+ */
+export class GatewayNotConnectedError extends Error {
+  constructor(readonly orgId: string) {
+    super("This organization has not connected a payment gateway yet");
+    this.name = "GatewayNotConnectedError";
+  }
+}
+
+/**
+ * May an org with no gateway of its own charge on the platform default?
+ *
+ * Under WeVend, never on the production site. Each charity is its own WeVend
+ * merchant and KindPath has no merchant account to lend: a fallback would either
+ * charge the sandbox test merchant in `WEVEND_MID` — a real-looking gift and CRA
+ * receipt with no money behind it — or, with no MID set, fail at the donor's
+ * card step. Refusing up front is the only honest outcome. Elsewhere (local,
+ * preview) the env merchant is a convenience for testing the donation flow.
+ *
+ * Stripe and the simulated gateway keep their existing fallback.
+ */
+export function platformFallbackAllowed(
+  provider: string | undefined = process.env.PAYMENT_PROVIDER,
+  vercelEnv: string | undefined = process.env.VERCEL_ENV,
+  platformMid: string | undefined = process.env.WEVEND_MID
+): boolean {
+  if (provider !== "wevend") return true;
+  if (vercelEnv === "production") return false;
+  return Boolean(platformMid);
 }
 
 /** Drop a cached per-org adapter (call after credentials change). */

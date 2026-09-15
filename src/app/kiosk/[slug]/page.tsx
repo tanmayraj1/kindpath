@@ -2,7 +2,8 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getPublicOrg } from "@/lib/queries/public";
 import { getOrgAccess } from "@/lib/access";
-import { getPaymentProviderForOrg, supportsHostedSale } from "@/lib/payments";
+import { orgPaymentReadiness } from "@/lib/payments/hosted";
+import { GivingClosed } from "@/components/give/giving-closed";
 import { Branded } from "@/components/give/branded";
 import { KioskFlow } from "@/components/give/kiosk-flow";
 
@@ -20,7 +21,15 @@ export default async function KioskPage({ params }: { params: { slug: string } }
   const { features } = await getOrgAccess(org.id);
   if (!features.qr) notFound();
 
-  const hosted = supportsHostedSale(await getPaymentProviderForOrg(org.id));
+  const readiness = await orgPaymentReadiness(org.id);
+  if (readiness.status !== "ready") {
+    return (
+      <Branded color={org.primaryColor} className="flex min-h-dvh items-center justify-center bg-secondary/30 p-6">
+        <GivingClosed orgName={org.name} />
+      </Branded>
+    );
+  }
+  const hosted = readiness.hosted;
 
   return (
     <Branded color={org.primaryColor} className="min-h-dvh bg-secondary/30">

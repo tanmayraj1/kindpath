@@ -171,7 +171,15 @@ async function completeOnboarding(opts: { skipGateway: boolean }): Promise<Onboa
     withTenant(session.orgId, (tx) =>
       tx.organization.findUnique({
         where: { id: session.orgId },
-        select: { onboardedAt: true, addressLine1: true, city: true, province: true, postalCode: true },
+        select: {
+          onboardedAt: true,
+          name: true,
+          slug: true,
+          addressLine1: true,
+          city: true,
+          province: true,
+          postalCode: true,
+        },
       })
     ),
     describeOrgGatewayCredentials(session.orgId),
@@ -187,7 +195,7 @@ async function completeOnboarding(opts: { skipGateway: boolean }): Promise<Onboa
     return {
       error: gateway.error
         ? "Your stored gateway credentials can't be read. Reconnect above, or skip for now."
-        : "Connect your Stripe account above, or choose to skip for now.",
+        : "Connect your WeVend merchant account above, or choose to skip for now.",
     };
   }
 
@@ -204,6 +212,22 @@ async function completeOnboarding(opts: { skipGateway: boolean }): Promise<Onboa
       after: { gatewayConnected: connected, gatewayProvider: connected ? gateway.provider : null },
       ip: clientIp(),
     });
+
+    // Inside the first-completion branch so a double submit can't send it twice.
+    const admin = await withTenant(session.orgId, (tx) =>
+      tx.orgUser.findUnique({ where: { id: session.sub }, select: { email: true, name: true } })
+    );
+    if (admin) {
+      const { sendOnboardingCompleteEmail } = await import("@/lib/onboarding-email");
+      await sendOnboardingCompleteEmail({
+        to: admin.email,
+        name: admin.name,
+        orgName: org.name,
+        slug: org.slug,
+        gatewayConnected: connected,
+        orgId: session.orgId,
+      });
+    }
   }
 
   revalidatePath("/dashboard");

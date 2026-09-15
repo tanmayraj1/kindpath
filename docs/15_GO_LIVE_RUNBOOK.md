@@ -80,11 +80,20 @@ merchant**. The owner now has a WeVend merchant account (mid + email + password 
 | `PAYMENT_PROVIDER` | `wevend` |
 | `WEVEND_BASE_URL` | `https://wepay.wevend.pro` (production) or `https://wepay.wevend.dev` (sandbox) — **must match the merchant account** |
 | `WEVEND_IFRAME_URL` | `https://iframe.wevend.pro` / `https://iframe.wevend.dev` (same environment) |
-| `WEVEND_MID` | the merchant ID the platform fallback transacts as |
-| `WEVEND_TERM_ID` | terminal id (usually `00000003`) |
+| `WEVEND_MID`, `WEVEND_TERM_ID` | **leave unset in production** with organization credentials. Each charity enters its own MID + terminal ID in onboarding. Required only in merchant mode (`WEVEND_EMAIL`). Off production they name a test merchant for orgs that haven't connected one |
 | `WEVEND_WV_NUMBER` + `WEVEND_PASSWORD` | **preferred** — organization credentials. WeVend's FAQ says to default to the organization Global Token, and setting these is also what lets a charity connect with **MID + terminal ID alone**, without handing KindPath its WePay password |
 | `WEVEND_EMAIL` + `WEVEND_PASSWORD` | merchant-mode fallback, when there is no organization |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | can stay; ignored when provider is `wevend` |
+
+**No platform fallback on the production site.** A charity that hasn't connected its merchant
+gets a giving page that says *online giving is opening soon* and takes no payments
+(`platformFallbackAllowed` in `src/lib/payments/index.ts`). KindPath has no merchant of its own
+to lend, and the env MID is a sandbox test merchant — charging on it would issue a real-looking
+CRA receipt with no money behind it. So a church can onboard fully today (skip step 4) and
+connect when WeVend issues its MID/TID.
+
+**Leaving simulation:** delete `ALLOW_SIMULATED_GATEWAY` in the same edit that sets
+`PAYMENT_PROVIDER=wevend`, then redeploy.
 
 Then redeploy and check:
 

@@ -4,7 +4,8 @@ import { Logo } from "@/components/brand/logo";
 import { Badge } from "@/components/ui/badge";
 import { Branded } from "@/components/give/branded";
 import { MembershipJoin } from "@/components/give/membership-join";
-import { orgUsesHostedFlow } from "@/lib/payments/hosted";
+import { orgPaymentReadiness } from "@/lib/payments/hosted";
+import { GivingClosed } from "@/components/give/giving-closed";
 import { getPublicMembership } from "@/lib/queries/memberships";
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
@@ -16,6 +17,8 @@ export default async function JoinPage({ params }: { params: { slug: string } })
   const data = await getPublicMembership(params.slug);
   if (!data || data.plans.length === 0) notFound();
   const { org, plans } = data;
+
+  const readiness = await orgPaymentReadiness(org.id);
 
   return (
     <Branded color={org.primaryColor} className="relative min-h-screen overflow-hidden bg-secondary/40">
@@ -33,11 +36,15 @@ export default async function JoinPage({ params }: { params: { slug: string } })
         <Badge variant="brand">Membership</Badge>
       </header>
       <main className="container flex items-start justify-center py-10 sm:py-16">
-        <MembershipJoin
-          org={{ name: org.name, slug: org.slug }}
-          plans={plans}
-          hosted={await orgUsesHostedFlow(org.id)}
-        />
+        {readiness.status === "ready" ? (
+          <MembershipJoin
+            org={{ name: org.name, slug: org.slug }}
+            plans={plans}
+            hosted={readiness.hosted}
+          />
+        ) : (
+          <GivingClosed orgName={org.name} what="memberships" />
+        )}
       </main>
     </Branded>
   );

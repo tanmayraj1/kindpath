@@ -1,4 +1,4 @@
-import { getPaymentProviderForOrg, supportsHostedSale } from "@/lib/payments";
+import { getPaymentProviderForOrg, supportsHostedSale, GatewayNotConnectedError } from "@/lib/payments";
 import { captureError } from "@/lib/observability";
 
 /**
@@ -19,5 +19,27 @@ export async function orgUsesHostedFlow(orgId: string): Promise<boolean> {
   } catch (e) {
     captureError(e, { source: "payments.orgUsesHostedFlow", orgId });
     return false;
+  }
+}
+
+/**
+ * Can this org take a payment at all right now?
+ *
+ * Public giving pages ask this before rendering a donation form, so a charity
+ * that hasn't connected its merchant yet shows "online giving opens soon" rather
+ * than a form that fails at the card step. "unavailable" (credentials present
+ * but unreadable) is kept distinct: that is a fault someone must fix, not a
+ * setup step.
+ */
+export async function orgPaymentReadiness(
+  orgId: string
+): Promise<{ status: "ready"; hosted: boolean } | { status: "not_connected" } | { status: "unavailable" }> {
+  try {
+    const provider = await getPaymentProviderForOrg(orgId);
+    return { status: "ready", hosted: supportsHostedSale(provider) };
+  } catch (e) {
+    if (e instanceof GatewayNotConnectedError) return { status: "not_connected" };
+    captureError(e, { source: "payments.orgPaymentReadiness", orgId });
+    return { status: "unavailable" };
   }
 }

@@ -101,14 +101,25 @@ export class WeVendAdapter implements PaymentProvider {
     this.fetchImpl = opts?.fetchImpl ?? fetch;
     this.orgMode = Boolean(this.cfg.wvNumber);
 
-    const ok = this.cfg.baseUrl && this.cfg.mid && this.cfg.password &&
-      (this.orgMode ? this.cfg.wvNumber : this.cfg.email);
+    // Org mode needs no MID to authenticate: the platform-level adapter (health
+    // probe) holds only the organization login, and each charity's merchant is
+    // supplied per org. Merchant mode logs in WITH the MID, so needs it up front.
+    const ok = this.cfg.baseUrl && this.cfg.password &&
+      (this.orgMode ? this.cfg.wvNumber : this.cfg.email && this.cfg.mid);
     if (!ok) {
       throw new Error(
-        "PAYMENT_PROVIDER=wevend requires WEVEND_BASE_URL, WEVEND_MID and either " +
-          "(WEVEND_WV_NUMBER + WEVEND_PASSWORD) for org mode or (WEVEND_EMAIL + WEVEND_PASSWORD) for merchant mode"
+        "PAYMENT_PROVIDER=wevend requires WEVEND_BASE_URL and either " +
+          "(WEVEND_WV_NUMBER + WEVEND_PASSWORD) for org mode or (WEVEND_EMAIL + WEVEND_PASSWORD + WEVEND_MID) for merchant mode"
       );
     }
+  }
+
+  /** Every payment call names a merchant; an organization login alone cannot transact. */
+  private merchant(): { mid: string; termId: string } {
+    if (!this.cfg.mid || !this.cfg.termId) {
+      throw new Error("WeVend: no merchant (MID and terminal ID) is configured for this organization");
+    }
+    return { mid: this.cfg.mid, termId: this.cfg.termId };
   }
 
   /**
@@ -128,6 +139,8 @@ export class WeVendAdapter implements PaymentProvider {
     await this.login();
     const environment = WeVendAdapter.environmentOf(this.cfg.baseUrl);
     if (!this.orgMode) return { environment, midChecked: true };
+    // Platform-level check: the organization login is all there is to prove.
+    if (!this.cfg.mid) return { environment, midChecked: false };
 
     const body = await this.authed<unknown>(
       "GET",
@@ -253,8 +266,7 @@ export class WeVendAdapter implements PaymentProvider {
       {
         amount: this.toCents(input.money.amount),
         orderId: this.orderId(input.orderId),
-        mid: this.cfg.mid,
-        termId: this.cfg.termId,
+        ...this.merchant(),
         redirectUrl: input.redirectUrl,
       }
     );
@@ -284,7 +296,7 @@ export class WeVendAdapter implements PaymentProvider {
       // accepted (and correct) in merchant mode too, so it is always sent.
     }>(
       "GET",
-      `/api/payments/get-transaction/${encodeURIComponent(transactionId)}?mid=${encodeURIComponent(this.cfg.mid)}`
+      `/api/payments/get-transaction/${encodeURIComponent(transactionId)}?mid=${encodeURIComponent(this.merchant().mid)}`
     );
 
     const d = body.data ?? {};
@@ -336,8 +348,7 @@ export class WeVendAdapter implements PaymentProvider {
       {
         amount: this.toCents(input.money.amount),
         orderId: this.orderId(input.metadata?.orderId),
-        mid: this.cfg.mid,
-        termId: this.cfg.termId,
+        ...this.merchant(),
         redirectUrl: this.serverCallbackUrl,
         transactionId: input.providerToken,
       }
@@ -388,8 +399,7 @@ export class WeVendAdapter implements PaymentProvider {
       {
         amount: this.toCents(input.money?.amount ?? 0),
         orderId: this.orderId(),
-        mid: this.cfg.mid,
-        termId: this.cfg.termId,
+        ...this.merchant(),
         redirectUrl: this.serverCallbackUrl,
         transactionId: input.providerChargeRef,
       }

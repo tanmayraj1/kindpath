@@ -142,7 +142,7 @@ export default async function DashboardPage() {
               <p className="text-xs text-muted-foreground">
                 {gateway.error
                   ? "Donations are being refused rather than sent to the wrong account. Reconnect your merchant account."
-                  : `Donations on your giving page run on KindPath's platform account and do not settle to ${data.org.name}. Connect your own merchant account to receive money directly.`}
+                  : `Your giving page tells donors online giving is opening soon, and takes no payments, until ${data.org.name}'s WeVend merchant account is connected.`}
               </p>
             </div>
             <Link href="/dashboard/settings#payments" className={buttonVariants({ size: "sm" })}>

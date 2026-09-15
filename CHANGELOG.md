@@ -5,6 +5,23 @@ entries are per behaviour change, not per commit. Dates are when the change reac
 
 ## [Unreleased]
 
+### Fixed — before onboarding the first churches (2026-09-15)
+- **A charity connected with MID + terminal ID read back as "credentials unreadable"** and had every
+  donation refused. `parseCredentials` still required a password, but under the organization Global
+  Token model `connectWeVendAccount` deliberately stores none. It now accepts `{ mid, termId }` and
+  still rejects a login identity without a password.
+- **No platform fallback under WeVend on the production site.** An org without its own merchant was
+  charged on the env `WEVEND_MID` (the sandbox test merchant). Giving, membership, event and kiosk
+  pages now show "Online giving is opening soon" instead of a form, and payment actions refuse with a
+  sentence rather than a crash (`GatewayNotConnectedError`, `orgPaymentReadiness`).
+- Production no longer requires `WEVEND_MID` / `WEVEND_TERM_ID` in organization mode; the adapter
+  authenticates without a merchant and refuses to open a sale without one.
+- A rejected signup-verification email is now reported to error tracking instead of vanishing.
+
+### Added
+- **"You're set up" email** to the admin who finishes onboarding: giving link, whether payments are
+  connected (and what to do if not), next steps. Sent once, never blocks finishing.
+
 ### Changed — gateway decision
 - **WeVend connect follows the organization Global Token model** (per WeVend's integration FAQ, now
   filed at `docs/vendor/WeVend_WePay_API_FAQ.html`): the platform authenticates once as the

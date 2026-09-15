@@ -5,7 +5,8 @@ import { Logo } from "@/components/brand/logo";
 import { Badge } from "@/components/ui/badge";
 import { Branded } from "@/components/give/branded";
 import { EventCheckout } from "@/components/give/event-checkout";
-import { orgUsesHostedFlow } from "@/lib/payments/hosted";
+import { orgPaymentReadiness } from "@/lib/payments/hosted";
+import { GivingClosed } from "@/components/give/giving-closed";
 import { getPublicEvent } from "@/lib/queries/events";
 
 export async function generateMetadata({ params }: { params: { slug: string; event: string } }): Promise<Metadata> {
@@ -17,6 +18,8 @@ export default async function EventPage({ params }: { params: { slug: string; ev
   const data = await getPublicEvent(params.slug, params.event);
   if (!data || data.event.ticketTypes.length === 0) notFound();
   const { org, event } = data;
+
+  const readiness = await orgPaymentReadiness(org.id);
 
   return (
     <Branded color={org.primaryColor} className="relative min-h-screen overflow-hidden bg-secondary/40">
@@ -48,12 +51,16 @@ export default async function EventPage({ params }: { params: { slug: string; ev
             <span>Hosted by {org.name}</span>
           </div>
         </div>
-        <EventCheckout
-          org={{ slug: org.slug }}
-          eventId={event.id}
-          ticketTypes={event.ticketTypes}
-          hosted={await orgUsesHostedFlow(org.id)}
-        />
+        {readiness.status === "ready" ? (
+          <EventCheckout
+            org={{ slug: org.slug }}
+            eventId={event.id}
+            ticketTypes={event.ticketTypes}
+            hosted={readiness.hosted}
+          />
+        ) : (
+          <GivingClosed orgName={org.name} what="ticket sales" />
+        )}
       </main>
     </Branded>
   );

@@ -5,7 +5,12 @@ import { cookies } from "next/headers";
 import { z } from "zod";
 import { adminDb } from "@/lib/db";
 import { withTenant } from "@/lib/tenant";
-import { getPaymentProviderForOrg, supportsHostedSale } from "@/lib/payments";
+import {
+  getPaymentProviderForOrg,
+  supportsHostedSale,
+  GatewayNotConnectedError,
+  type PaymentProvider,
+} from "@/lib/payments";
 import { nextReceiptSerial, formatAddress } from "@/lib/receipts";
 import { queueReceiptEmail, queueReceiptDetailsEmail, flushEmails } from "@/lib/notifications";
 import { captureError } from "@/lib/observability";
@@ -16,6 +21,28 @@ import { signChargeToken, verifyChargeToken } from "@/lib/charge-token";
 import { signReceiptToken } from "@/lib/receipt-links";
 import { signHostedState, HOSTED_STATE_COOKIE, type HostedKind } from "@/lib/hosted-state";
 import { appUrl as deploymentUrl } from "@/lib/app-url";
+
+/**
+ * The org's provider, or the sentence to show the donor instead.
+ *
+ * A charity without a connected gateway, or with unreadable credentials, used to
+ * surface here as an uncaught server-action error — a generic crash page at the
+ * moment someone was trying to give.
+ */
+async function providerOrRefusal(
+  orgId: string,
+  orgName: string
+): Promise<{ ok: true; provider: PaymentProvider } | { ok: false; message: string }> {
+  try {
+    return { ok: true, provider: await getPaymentProviderForOrg(orgId) };
+  } catch (e) {
+    if (e instanceof GatewayNotConnectedError) {
+      return { ok: false, message: `${orgName} isn't accepting online payments yet.` };
+    }
+    captureError(e, { source: "give.providerOrRefusal", orgId });
+    return { ok: false, message: "The payment service is unavailable. Please try again shortly." };
+  }
+}
 
 // ---------- step 1: authorize a charge (payment happens first) ----------
 export type ChargeState =
@@ -36,8 +63,9 @@ export async function authorizeCharge(
   const org = await adminDb.organization.findUnique({ where: { slug } });
   if (!org) return { ok: false, message: "Organization not found." };
 
-  const provider = await getPaymentProviderForOrg(org.id);
-  const result = await provider.charge({
+  const provider = await providerOrRefusal(org.id, org.name);
+  if (!provider.ok) return { ok: false, message: provider.message };
+  const result = await provider.provider.charge({
     orgId: org.id,
     providerToken: "tok_public_oneoff",
     money: { amount, currency },
@@ -102,7 +130,9 @@ async function beginHosted(kind: HostedKind, input: HostedInput): Promise<Hosted
   const org = await adminDb.organization.findUnique({ where: { slug } });
   if (!org) return { ok: false, message: "Organization not found." };
 
-  const provider = await getPaymentProviderForOrg(org.id);
+  const resolved = await providerOrRefusal(org.id, org.name);
+  if (!resolved.ok) return { ok: false, message: resolved.message };
+  const provider = resolved.provider;
   if (!supportsHostedSale(provider)) {
     return { ok: false, message: "Hosted payments are not enabled." };
   }

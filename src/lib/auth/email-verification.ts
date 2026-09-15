@@ -69,6 +69,11 @@ export async function sendEmailVerification(args: {
       }),
     });
     emailed = result.ok;
+    // Returned, not thrown — but it must not vanish. A Resend rejection (wrong
+    // EMAIL_FROM domain, revoked key) otherwise leaves no trace anywhere.
+    if (!result.ok) {
+      captureError(new Error(result.error), { source: "auth.sendEmailVerification", userId: args.userId });
+    }
   } catch (e) {
     captureError(e, { source: "auth.sendEmailVerification", userId: args.userId });
   }

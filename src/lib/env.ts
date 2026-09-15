@@ -143,12 +143,18 @@ export function missingEnv(): string[] {
       }
     }
     if (process.env.PAYMENT_PROVIDER === "wevend") {
-      for (const key of ["WEVEND_BASE_URL", "WEVEND_IFRAME_URL", "WEVEND_MID", "WEVEND_PASSWORD", "WEVEND_TERM_ID"]) {
+      for (const key of ["WEVEND_BASE_URL", "WEVEND_IFRAME_URL", "WEVEND_PASSWORD"]) {
         if (!process.env[key]) missing.push(key);
       }
-      // Two auth shapes: org/ISV (wvNumber) or merchant (email). Exactly one is enough.
-      if (!process.env.WEVEND_WV_NUMBER && !process.env.WEVEND_EMAIL) {
-        missing.push("WEVEND_WV_NUMBER or WEVEND_EMAIL");
+      // Two auth shapes. Organization (wvNumber): each charity supplies its own
+      // MID + terminal, so the platform needs none — requiring them pushed a
+      // sandbox test merchant into production config. Merchant (email): the
+      // platform IS one merchant, so it needs that merchant's MID + terminal.
+      if (!process.env.WEVEND_WV_NUMBER) {
+        if (!process.env.WEVEND_EMAIL) missing.push("WEVEND_WV_NUMBER or WEVEND_EMAIL");
+        else for (const key of ["WEVEND_MID", "WEVEND_TERM_ID"]) {
+          if (!process.env[key]) missing.push(key);
+        }
       }
     }
   }
