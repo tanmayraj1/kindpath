@@ -17,7 +17,6 @@ type Props = {
   craRegistrationNumber?: string | null;
   authorizedSignatory?: string | null;
   receiptLocality?: string | null;
-  primaryColor?: string | null;
   receiptMessage?: string | null;
   receiptFooter?: string | null;
   receiptPrefix?: string | null;
@@ -154,29 +153,6 @@ export function SettingsForm(props: Props) {
       </div>
 
       <div className="rounded-xl border border-border p-4">
-        <p className="text-sm font-medium">Brand color</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Retints your donation page, campaigns and receipts.
-        </p>
-        <div className="mt-3 flex max-w-xs flex-col gap-2">
-          <Label htmlFor="primaryColor">Brand color (hex)</Label>
-          <div className="flex items-center gap-2">
-            <Input
-              id="primaryColor"
-              name="primaryColor"
-              placeholder="#4f46e5"
-              defaultValue={props.primaryColor ?? ""}
-            />
-            <span
-              aria-hidden
-              className="size-9 shrink-0 rounded-lg border border-border"
-              style={{ background: props.primaryColor ?? "#4f46e5" }}
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-border p-4">
         <p className="text-sm font-medium">Receipting policy</p>
         <p className="mt-1 text-xs text-muted-foreground">
           How and when this organization issues receipts. A gift is only ever receipted once —
@@ -219,7 +195,7 @@ export function SettingsForm(props: Props) {
       <div className="rounded-xl border border-border p-4">
         <p className="text-sm font-medium">Receipt customization</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Appears on the tax receipts / confirmations donors download (alongside your logo &amp; color).
+          Appears on the tax receipts / confirmations donors download (alongside your logo &amp; colour, set under Branding above).
         </p>
         <div className="mt-3 flex flex-col gap-4">
           <div className="flex flex-col gap-2">
@@ -256,8 +232,14 @@ export function SettingsForm(props: Props) {
         </div>
       </div>
 
-      <div>
-        <SubmitButton>Save settings</SubmitButton>
+      {/* Repeated beside the button: the form is long, and an error shown only at
+          the top is off-screen at the moment someone presses Save. */}
+      <div className="flex flex-col gap-3">
+        <FormAlert>{state.error}</FormAlert>
+        {state.ok && <FormAlert variant="success">Settings saved.</FormAlert>}
+        <div>
+          <SubmitButton>Save settings</SubmitButton>
+        </div>
       </div>
     </form>
   );

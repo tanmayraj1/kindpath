@@ -61,6 +61,7 @@ export function FeatureToggle({
           type="button"
           role="switch"
           aria-checked={enabled}
+          aria-label={label}
           disabled={pending}
           onClick={() =>
             start(() => setFeatureOverride(orgId, featureKey, enabled ? "revoke" : "grant"))
@@ -75,7 +76,10 @@ export function FeatureToggle({
           ) : (
             <span
               className={cn(
-                "absolute top-1 size-5 rounded-full bg-white shadow-sm transition-transform",
+                // left-0 anchors the knob to the track. Without it an absolutely
+                // positioned child of a <button> starts from the button's centred
+                // static position, and the "on" translate pushed it off the edge.
+                "absolute left-0 top-1 size-5 rounded-full bg-white shadow-sm transition-transform",
                 enabled ? "translate-x-6" : "translate-x-1"
               )}
             />

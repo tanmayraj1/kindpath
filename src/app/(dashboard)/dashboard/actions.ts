@@ -245,11 +245,9 @@ const settingsSchema = z.object({
   craRegistrationNumber: z.string().max(30).optional(),
   authorizedSignatory: z.string().max(120).optional(),
   receiptLocality: z.string().max(120).optional(),
-  primaryColor: z
-    .string()
-    .regex(/^#?[0-9a-fA-F]{6}$/, "Use a 6-digit hex color like #4f46e5")
-    .optional()
-    .or(z.literal("")),
+  // primaryColor is deliberately absent: it is saved by saveBrandColor
+  // (settings/branding-actions.ts). If this form wrote it, every receipts save
+  // from a form without the field would reset the org's colour to the default.
   receiptMessage: z.string().max(500).optional().or(z.literal("")),
   receiptFooter: z.string().max(500).optional().or(z.literal("")),
   receiptPrefix: z
@@ -279,7 +277,6 @@ export async function updateOrgSettings(
     craRegistrationNumber: formData.get("craRegistrationNumber") || undefined,
     authorizedSignatory: formData.get("authorizedSignatory") || undefined,
     receiptLocality: formData.get("receiptLocality") || undefined,
-    primaryColor: formData.get("primaryColor") || undefined,
     receiptMessage: formData.get("receiptMessage") || undefined,
     receiptFooter: formData.get("receiptFooter") || undefined,
     receiptPrefix: formData.get("receiptPrefix") || undefined,
@@ -296,12 +293,6 @@ export async function updateOrgSettings(
     return { error: "A CRA registration number is required for registered charities." };
   }
 
-  const color = parsed.data.primaryColor
-    ? parsed.data.primaryColor.startsWith("#")
-      ? parsed.data.primaryColor
-      : `#${parsed.data.primaryColor}`
-    : null;
-
   await withTenant(session.orgId, (tx) =>
     tx.organization.update({
       where: { id: session.orgId },
@@ -311,7 +302,6 @@ export async function updateOrgSettings(
         craRegistrationNumber: parsed.data.craRegistrationNumber,
         authorizedSignatory: parsed.data.authorizedSignatory,
         receiptLocality: parsed.data.receiptLocality,
-        primaryColor: color,
         receiptMessage: parsed.data.receiptMessage || null,
         receiptFooter: parsed.data.receiptFooter || null,
         receiptPrefix: parsed.data.receiptPrefix || null,

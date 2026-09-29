@@ -5,6 +5,7 @@ import { useFormState } from "react-dom";
 import { AlertCircle, CheckCircle2, Upload, Trash2 } from "lucide-react";
 import { uploadLogo, removeLogo, type LogoState } from "@/app/(dashboard)/dashboard/settings/logo-actions";
 import { Button } from "@/components/ui/button";
+import { shrinkLogo } from "@/lib/image-resize";
 import { SubmitButton } from "@/components/auth/submit-button";
 
 const initial: LogoState = {};
@@ -12,6 +13,8 @@ const initial: LogoState = {};
 export function LogoUploader({ logoUrl }: { logoUrl?: string | null }) {
   const [state, action] = useFormState(uploadLogo, initial);
   const [preview, setPreview] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [preparing, setPreparing] = useState(false);
   const [pending, start] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -22,7 +25,8 @@ export function LogoUploader({ logoUrl }: { logoUrl?: string | null }) {
     <div className="rounded-xl border border-border p-4">
       <p className="text-sm font-medium">Logo</p>
       <p className="mt-1 text-xs text-muted-foreground">
-        Appears on your donation page, campaigns, receipts and emails. PNG, JPG or WebP, up to 256&nbsp;KB.
+        Appears on your donation page, campaigns, receipts and emails. PNG, JPG or WebP — large
+        images are resized for you automatically.
       </p>
 
       {state.error && (
@@ -57,14 +61,37 @@ export function LogoUploader({ logoUrl }: { logoUrl?: string | null }) {
             name="logo"
             accept="image/png,image/jpeg,image/webp"
             className="block max-w-[220px] text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-muted"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              setPreview(f ? URL.createObjectURL(f) : null);
+            onChange={async (e) => {
+              const input = e.currentTarget;
+              const f = input.files?.[0];
+              setNote(null);
+              if (!f) {
+                setPreview(null);
+                return;
+              }
+              setPreview(URL.createObjectURL(f));
+              // Resize in the browser before upload, so a logo straight from a
+              // designer doesn't bounce off the server's size limit.
+              setPreparing(true);
+              try {
+                const small = await shrinkLogo(f);
+                if (small !== f && typeof DataTransfer !== "undefined") {
+                  const dt = new DataTransfer();
+                  dt.items.add(small);
+                  input.files = dt.files;
+                  setNote(
+                    `Resized from ${Math.round(f.size / 1024)} KB to ${Math.round(small.size / 1024)} KB.`
+                  );
+                }
+              } finally {
+                setPreparing(false);
+              }
             }}
           />
-          <SubmitButton size="sm">
-            <Upload className="size-4" /> Upload
+          <SubmitButton size="sm" disabled={preparing}>
+            <Upload className="size-4" /> {preparing ? "Preparing…" : "Upload"}
           </SubmitButton>
+          {note && <span className="w-full text-xs text-muted-foreground">{note}</span>}
         </form>
 
         {current && (

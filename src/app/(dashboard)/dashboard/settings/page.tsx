@@ -2,6 +2,7 @@ import { Topbar } from "@/components/dashboard/topbar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SettingsForm } from "@/components/dashboard/settings-form";
 import { LogoUploader } from "@/components/dashboard/logo-uploader";
+import { BrandColorPicker } from "@/components/dashboard/brand-color-picker";
 import { GatewayForm } from "@/components/dashboard/gateway-form";
 import { requireOrgUser } from "@/lib/auth/guards";
 import { getOrg } from "@/lib/queries/org";
@@ -49,8 +50,9 @@ export default async function SettingsPage() {
               Your logo and colour on your public pages, receipts and emails.
             </p>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex flex-col gap-4">
             <LogoUploader logoUrl={org?.logoUrl} />
+            <BrandColorPicker orgName={org?.name ?? ""} primaryColor={org?.primaryColor} />
           </CardContent>
         </Card>
 
@@ -68,7 +70,6 @@ export default async function SettingsPage() {
               craRegistrationNumber={org?.craRegistrationNumber}
               authorizedSignatory={org?.authorizedSignatory}
               receiptLocality={org?.receiptLocality}
-              primaryColor={org?.primaryColor}
               receiptMessage={org?.receiptMessage}
               receiptFooter={org?.receiptFooter}
               receiptPrefix={org?.receiptPrefix}

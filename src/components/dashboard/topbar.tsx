@@ -23,7 +23,7 @@ export function Topbar({
   const nav = useMobileNav();
 
   return (
-    <header className="sticky top-0 z-30 flex min-h-16 items-center justify-between gap-3 border-b border-border bg-card/90 px-4 py-3 backdrop-blur-xl sm:px-6">
+    <header className="sticky top-0 z-30 flex min-h-16 items-center justify-between gap-3 border-b border-border bg-card/90 px-4 py-3 backdrop-blur-xl sm:px-6 lg:top-5 lg:rounded-card lg:border-0 lg:shadow-soft">
       <div className="flex min-w-0 items-center gap-2">
         {nav && (
           <button
