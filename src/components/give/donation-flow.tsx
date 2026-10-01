@@ -287,7 +287,12 @@ export function DonationFlow({
                 ) : (
                   hosted && <Lock className="size-4 shrink-0" aria-hidden />
                 )}
-                <span className="truncate">{hosted ? "Continue to payment" : "Continue"}</span>
+                {/* "Continue to payment" doesn't fit beside the amount on a phone;
+                    the lock icon already says where the button leads. */}
+                <span className="truncate sm:hidden">Continue</span>
+                <span className="hidden truncate sm:inline">
+                  {hosted ? "Continue to payment" : "Continue"}
+                </span>
               </span>
               <span className="tnum shrink-0 whitespace-nowrap font-semibold">
                 {formatCAD(effectiveAmount)}
