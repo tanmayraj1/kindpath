@@ -15,7 +15,7 @@ import { Field } from "@/components/ui/field";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { SubmitButton } from "@/components/auth/submit-button";
-import { cn, formatCAD, estimateFee, PROCESSING_FEE_RATE } from "@/lib/utils";
+import { cn, formatCAD, withProcessingFee, PROCESSING_FEE_LABEL } from "@/lib/utils";
 
 type Org = {
   id: string;
@@ -47,13 +47,12 @@ export function DonationFlow({
   const [chargeRef, setChargeRef] = useState("");
   const [charging, setCharging] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
-  const [coverFees, setCoverFees] = useState(true);
 
   const [completeState, completeFormAction] = useFormState(completeDonation, initialComplete);
 
   const baseAmount = custom ? Math.max(0, Number(custom) || 0) : amount;
-  const fee = estimateFee(baseAmount);
-  const effectiveAmount = coverFees ? Math.round((baseAmount + fee) * 100) / 100 : baseAmount;
+  // Every gift includes the processing fee — see withProcessingFee().
+  const effectiveAmount = withProcessingFee(baseAmount);
 
   async function pay() {
     setPayError(null);
@@ -249,20 +248,6 @@ export function DonationFlow({
               </fieldset>
             )}
 
-            {baseAmount > 0 && (
-              <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border p-3 text-sm">
-                <input
-                  type="checkbox"
-                  checked={coverFees}
-                  onChange={(e) => setCoverFees(e.target.checked)}
-                  className="mt-0.5 size-4 rounded border-input text-primary focus-visible:ring-2 focus-visible:ring-ring/30"
-                />
-                <span>
-                  Add {formatCAD(fee)} ({(PROCESSING_FEE_RATE * 100).toFixed(1)}%) to cover processing
-                  fees, so {org.name} receives your full gift.
-                </span>
-              </label>
-            )}
 
             {payError && hosted && (
               <div className="flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
@@ -302,6 +287,11 @@ export function DonationFlow({
                 {frequency === "monthly" ? "/mo" : ""}
               </span>
             </Button>
+            {baseAmount > 0 && (
+              <p className="-mt-2 text-center text-xs text-muted-foreground">
+                Includes a {PROCESSING_FEE_LABEL} processing fee
+              </p>
+            )}
           </div>
         )}
 

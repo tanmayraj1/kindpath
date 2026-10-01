@@ -42,11 +42,24 @@ export function hexToHslTriplet(hex: string): string | null {
  */
 export const PROCESSING_FEE_RATE = 0.024;
 
-/** Estimated payment processing fee so donors can cover it, rounded to the cent. */
+/** Payment processing fee on a gift, rounded to the cent. */
 export function estimateFee(amount: number): number {
   if (amount <= 0) return 0;
   return Math.round(amount * PROCESSING_FEE_RATE * 100) / 100;
 }
+
+/**
+ * What a donor is charged for a gift: the gift plus the processing fee.
+ * The fee is not optional (decision 2026-10-01) — every donation includes it,
+ * and the page says so rather than offering a checkbox.
+ */
+export function withProcessingFee(amount: number): number {
+  if (amount <= 0) return 0;
+  return Math.round((amount + estimateFee(amount)) * 100) / 100;
+}
+
+/** "2.4%" — for the line telling donors the total includes the fee. */
+export const PROCESSING_FEE_LABEL = `${(PROCESSING_FEE_RATE * 100).toFixed(1)}%`;
 
 /** Format a number as CAD currency. */
 export function formatCAD(amount: number, opts: Intl.NumberFormatOptions = {}) {

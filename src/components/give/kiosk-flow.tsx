@@ -15,7 +15,7 @@ import { Field } from "@/components/ui/field";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { SubmitButton } from "@/components/auth/submit-button";
-import { formatCAD } from "@/lib/utils";
+import { formatCAD, withProcessingFee, PROCESSING_FEE_LABEL } from "@/lib/utils";
 
 type Org = {
   name: string;
@@ -80,7 +80,7 @@ export function KioskFlow({ org, hosted }: { org: Org; hosted: boolean }) {
       const res = await startPayment(() =>
         beginHostedDonation({
           slug: org.slug,
-          amount,
+          amount: withProcessingFee(amount),
           fundId: fundId !== "none" ? fundId : undefined,
           frequency: "one_time",
         })
@@ -93,7 +93,7 @@ export function KioskFlow({ org, hosted }: { org: Org; hosted: boolean }) {
       setError(res.message);
       return;
     }
-    const res = await authorizeCharge(org.slug, amount);
+    const res = await authorizeCharge(org.slug, withProcessingFee(amount));
     setBusy(false);
     if (res.ok) {
       setChargeRef(res.chargeRef);
@@ -164,8 +164,13 @@ export function KioskFlow({ org, hosted }: { org: Org; hosted: boolean }) {
             onClick={pay}
           >
             {busy && <Loader2 className="size-5 animate-spin" />}
-            {amount >= 1 ? `Donate ${formatCAD(amount)}` : "Select an amount"}
+            {amount >= 1 ? `Donate ${formatCAD(withProcessingFee(amount))}` : "Select an amount"}
           </Button>
+          {amount >= 1 && (
+            <p className="text-sm text-muted-foreground">
+              Includes a {PROCESSING_FEE_LABEL} processing fee
+            </p>
+          )}
         </div>
       )}
 
@@ -191,7 +196,7 @@ export function KioskFlow({ org, hosted }: { org: Org; hosted: boolean }) {
 
           <input type="hidden" name="slug" value={org.slug} />
           <input type="hidden" name="chargeRef" value={chargeRef} />
-          <input type="hidden" name="amount" value={amount} />
+          <input type="hidden" name="amount" value={withProcessingFee(amount)} />
           <input type="hidden" name="fundId" value={fundId} />
           <input type="hidden" name="campaignId" value="none" />
           <input type="hidden" name="frequency" value="one_time" />
