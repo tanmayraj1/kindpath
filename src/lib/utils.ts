@@ -34,10 +34,18 @@ export function hexToHslTriplet(hex: string): string | null {
   return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
 }
 
-/** Estimated payment processing fee (2.9% + $0.30) so donors can cover it. */
+/**
+ * Processing-fee rate a donor may choose to cover, as a fraction.
+ *
+ * 2.4% flat — the WeVend rate. It used to be Stripe's 2.9% + $0.30, and the
+ * fixed 30 cents is what made a $1 test gift ask the donor for 33 cents (33%).
+ */
+export const PROCESSING_FEE_RATE = 0.024;
+
+/** Estimated payment processing fee so donors can cover it, rounded to the cent. */
 export function estimateFee(amount: number): number {
   if (amount <= 0) return 0;
-  return Math.round((amount * 0.029 + 0.3) * 100) / 100;
+  return Math.round(amount * PROCESSING_FEE_RATE * 100) / 100;
 }
 
 /** Format a number as CAD currency. */

@@ -14,7 +14,7 @@ import { Field } from "@/components/ui/field";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { SubmitButton } from "@/components/auth/submit-button";
-import { cn, formatCAD, estimateFee } from "@/lib/utils";
+import { cn, formatCAD, estimateFee, PROCESSING_FEE_RATE } from "@/lib/utils";
 
 type Org = {
   id: string;
@@ -212,26 +212,22 @@ export function DonationFlow({
                */
               <fieldset className="flex flex-col gap-2">
                 <legend className="mb-2 text-sm font-medium">Fund</legend>
-                <div className="flex flex-wrap gap-2">
-                  {org.funds.map((f, i) => {
+                {/* Two even columns on phones, so names of different lengths
+                    line up instead of leaving one chip stranded per row. One
+                    neutral style for every fund: the only colour is the choice
+                    the donor made. (A per-chip pastel rotation read as random.) */}
+                <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                  {org.funds.map((f) => {
                     const selected = fundId === f.id;
-                    // Pastel rotation, so a row of chips reads as a set rather
-                    // than as five identical buttons.
-                    const tint = [
-                      "bg-secondary",
-                      "bg-accent/25",
-                      "bg-brand-100",
-                      "bg-periwinkle/25",
-                    ][i % 4];
                     return (
                       <label
                         key={f.id}
                         className={cn(
-                          "cursor-pointer rounded-full border px-4 py-2.5 text-sm font-medium transition-all",
+                          "flex min-h-11 cursor-pointer items-center justify-center rounded-2xl border px-4 py-2.5 text-center text-sm font-medium leading-snug transition-colors",
                           "has-[:focus-visible]:outline-none has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring/40",
                           selected
-                            ? "scale-[1.03] border-transparent bg-primary text-primary-foreground shadow-soft"
-                            : cn("border-transparent text-foreground hover:brightness-95", tint)
+                            ? "border-primary bg-primary text-primary-foreground shadow-soft"
+                            : "border-border bg-card text-foreground hover:border-primary/50"
                         )}
                       >
                         <input
@@ -259,7 +255,8 @@ export function DonationFlow({
                   className="mt-0.5 size-4 rounded border-input text-primary focus-visible:ring-2 focus-visible:ring-ring/30"
                 />
                 <span>
-                  Add {formatCAD(fee)} to cover processing fees, so {org.name} receives your full gift.
+                  Add {formatCAD(fee)} ({(PROCESSING_FEE_RATE * 100).toFixed(1)}%) to cover processing
+                  fees, so {org.name} receives your full gift.
                 </span>
               </label>
             )}
@@ -276,18 +273,24 @@ export function DonationFlow({
                 edge and kept going; overflow is visible, so the text escaped the
                 button rather than clipping. Wrapping instead of overflowing keeps
                 the largest gifts — and "/mo" — inside the control. */}
+            {/* Label left, amount right, one line. The old centred label wrapped
+                on phones and stranded the amount on its own half of the button. */}
             <Button
               size="lg"
-              className="h-auto min-h-12 w-full whitespace-normal px-4 py-3 text-center sm:px-7"
+              className="h-auto min-h-14 w-full justify-between gap-3 px-5 py-3 text-base sm:px-7"
               disabled={effectiveAmount < 1 || charging}
               onClick={() => (hosted ? payHosted() : setStep(2))}
             >
-              {charging && <Loader2 className="size-4 animate-spin" />}
-              <span>{hosted ? "Continue to secure payment" : "Continue"}</span>
-              {/* The separator belongs to the amount, not to the label before it —
-                  otherwise the wrap leaves a dangling "·" at the end of line one. */}
-              <span className="tnum whitespace-nowrap">
-                · {formatCAD(effectiveAmount)}
+              <span className="flex min-w-0 items-center gap-2">
+                {charging ? (
+                  <Loader2 className="size-4 shrink-0 animate-spin" />
+                ) : (
+                  hosted && <Lock className="size-4 shrink-0" aria-hidden />
+                )}
+                <span className="truncate">{hosted ? "Continue to payment" : "Continue"}</span>
+              </span>
+              <span className="tnum shrink-0 whitespace-nowrap font-semibold">
+                {formatCAD(effectiveAmount)}
                 {frequency === "monthly" ? "/mo" : ""}
               </span>
             </Button>

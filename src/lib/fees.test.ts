@@ -2,9 +2,11 @@ import { describe, it, expect } from "vitest";
 import { estimateFee, formatCAD } from "./utils";
 
 describe("fee estimation (cover-the-fees)", () => {
-  it("computes 2.9% + $0.30", () => {
-    expect(estimateFee(100)).toBe(3.2); // 2.90 + 0.30
-    expect(estimateFee(50)).toBe(1.75); // 1.45 + 0.30
+  it("computes a flat 2.4%", () => {
+    expect(estimateFee(100)).toBe(2.4);
+    expect(estimateFee(50)).toBe(1.2);
+    expect(estimateFee(1)).toBe(0.02); // not 33 cents — there is no fixed fee
+    expect(estimateFee(1250)).toBe(30);
   });
   it("is zero for non-positive amounts", () => {
     expect(estimateFee(0)).toBe(0);
