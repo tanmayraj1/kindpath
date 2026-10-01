@@ -1838,6 +1838,34 @@ export async function connectWeVendAccount(
     };
   }
 
+  // One merchant, one organization. Under the Global Token the probe below only
+  // proves the MID exists under KindPath's WeVend organization — not that it is
+  // THIS charity's. A second org bound to the same MID would have its donations
+  // settle into the first charity's account.
+  const { findOrgUsingWeVendMid } = await import("@/lib/payments/org-credentials");
+  const holder = await findOrgUsingWeVendMid(parsed.data.mid, session.orgId);
+  if (holder) {
+    captureError(new Error("WeVend MID already bound to another organization"), {
+      source: "gateway.connect.wevend.duplicate",
+      orgId: session.orgId,
+      otherOrgId: holder.id,
+    });
+    await audit({
+      actor: { type: "org_user", id: session.sub },
+      orgId: session.orgId,
+      action: "org.gateway.connect_refused.duplicate_mid",
+      entityType: "organization",
+      entityId: session.orgId,
+      after: { midTail: parsed.data.mid.slice(-4) },
+      ip: clientIp(),
+    });
+    return {
+      error:
+        "That merchant ID is already connected to another organization on KindPath. Check it against the details WeVend sent you, or contact KindPath support.",
+      fields: { mid: "Already connected to another organization" },
+    };
+  }
+
   const { WeVendAdapter } = await import("@/lib/payments/wevend-adapter");
   let environment: "sandbox" | "production" | "unknown";
   try {

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { PaymentProvider } from "./provider";
 import { MockAdapter } from "./mock-adapter";
 import { StripeAdapter } from "./stripe-adapter";
@@ -35,9 +36,21 @@ export function getPaymentProvider(): PaymentProvider {
 }
 
 // Per-org adapters. Each charity connects its OWN gateway account so donations
-// settle directly to them. Keyed by orgId so a warm serverless instance reuses
-// the authenticated adapter (and, for WeVend, its JWT).
+// settle directly to them. A warm serverless instance reuses the authenticated
+// adapter (and, for WeVend, its JWT).
+//
+// Keyed by org AND a fingerprint of its stored credentials, not by org alone.
+// invalidateOrgProvider() only clears the instance that handled the change, so
+// an orgId-only key let every OTHER warm instance keep charging the previous
+// merchant after a charity corrected a wrong MID — settling its donations into
+// whichever account the old MID named. Reading the sealed blob costs one indexed
+// query and makes a credential change take effect everywhere on the next charge.
 const orgProviders = new Map<string, PaymentProvider>();
+
+function cacheKey(orgId: string, ref: string | null): string {
+  if (!ref) return `${orgId}:none`;
+  return `${orgId}:${createHash("sha256").update(ref).digest("base64url").slice(0, 22)}`;
+}
 
 /**
  * Resolve the provider for a specific org, preferring the org's own encrypted
@@ -48,11 +61,13 @@ const orgProviders = new Map<string, PaymentProvider>();
  * takes another.
  */
 export async function getPaymentProviderForOrg(orgId: string): Promise<PaymentProvider> {
-  const cached = orgProviders.get(orgId);
+  const { orgCredentialRef, credentialsFromRef } = await import("./org-credentials");
+  const ref = await orgCredentialRef(orgId);
+  const key = cacheKey(orgId, ref);
+  const cached = orgProviders.get(key);
   if (cached) return cached;
 
-  const { loadOrgGatewayCredentials } = await import("./org-credentials");
-  const load = await loadOrgGatewayCredentials(orgId);
+  const load = credentialsFromRef(orgId, ref);
 
   // Credentials exist but can't be read: refuse. Falling back to the platform
   // default here would silently deposit this org's donations into a DIFFERENT
@@ -68,7 +83,7 @@ export async function getPaymentProviderForOrg(orgId: string): Promise<PaymentPr
       throw new GatewayNotConnectedError(orgId);
     }
     const fallback = getPaymentProvider();
-    orgProviders.set(orgId, fallback);
+    orgProviders.set(key, fallback);
     return fallback;
   }
 
@@ -96,7 +111,7 @@ export async function getPaymentProviderForOrg(orgId: string): Promise<PaymentPr
           // this merchant is addressed by mid/termId.
           new WeVendAdapter({ mid: creds.mid, termId: creds.termId });
 
-  orgProviders.set(orgId, built);
+  orgProviders.set(key, built);
   return built;
 }
 
@@ -138,7 +153,9 @@ export function platformFallbackAllowed(
 
 /** Drop a cached per-org adapter (call after credentials change). */
 export function invalidateOrgProvider(orgId: string): void {
-  orgProviders.delete(orgId);
+  Array.from(orgProviders.keys())
+    .filter((k) => k.startsWith(`${orgId}:`))
+    .forEach((k) => orgProviders.delete(k));
 }
 
 export { supportsHostedSale } from "./provider";

@@ -1,3 +1,4 @@
+import { orderBinding } from "@/lib/payments/order-binding";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { requireDonor } from "@/lib/auth/guards";
@@ -69,6 +70,17 @@ export async function GET(req: Request) {
 
   const confirmed = await provider.confirmTransaction(transactionId!);
   if (!confirmed.success) return done("declined");
+
+  // Bound to the order we opened for this charity's merchant — see order-binding.ts.
+  const binding = orderBinding(provider.name, confirmed.paymentOrderId, st.paymentOrderId);
+  if (binding !== "ok") {
+    captureError(new Error(`card update order binding ${binding}`), {
+      source: "portal.cardUpdate",
+      orgId: session.orgId,
+      transactionId,
+    });
+  }
+  if (binding === "mismatch") return done("mismatch");
 
   // The gateway must have charged what we asked for.
   if (confirmed.amount != null && Math.abs(confirmed.amount - st.amount) > 0.01) {

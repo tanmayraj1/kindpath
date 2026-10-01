@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { orderBinding } from "@/lib/payments/order-binding";
 import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
 import { XCircle } from "lucide-react";
@@ -62,7 +63,7 @@ export default async function HostedResponsePage({
       "We couldn't match this payment to a donation in progress. No receipt was issued — please start again."
     );
   }
-  if (state.paymentOrderId !== paymentOrderId) {
+  if (state.paymentOrderId !== paymentOrderId || state.orgId !== org.id) {
     return failure("Payment mismatch", "This payment doesn't match your donation session. Please start again.");
   }
 
@@ -74,6 +75,25 @@ export default async function HostedResponsePage({
       confirmed.failureMessage ?? "Your card was not charged successfully. Please try again."
     );
   }
+  // The transaction must be the one for the order we opened with THIS charity's
+  // merchant — not merely an approved transaction somewhere under our WeVend
+  // organization. See src/lib/payments/order-binding.ts.
+  const binding = orderBinding(provider.name, confirmed.paymentOrderId, state.paymentOrderId);
+  if (binding !== "ok") {
+    const { captureError } = await import("@/lib/observability");
+    captureError(new Error(`hosted order binding ${binding}`), {
+      source: "give.response",
+      orgId: org.id,
+      transactionId,
+    });
+  }
+  if (binding === "mismatch") {
+    return failure(
+      "Payment mismatch",
+      "This payment doesn't belong to your donation session. No receipt was issued — please contact the organization."
+    );
+  }
+
   // Defense in depth: the gateway must have charged the amount we intended.
   if (confirmed.amount != null && Math.abs(confirmed.amount - state.amount) > 0.01) {
     const { captureError } = await import("@/lib/observability");

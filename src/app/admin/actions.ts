@@ -491,8 +491,22 @@ export async function savePosCredentials(
   }
   const d = parsed.data;
 
-  const { saveOrgGatewayCredentials } = await import("@/lib/payments/org-credentials");
+  const { saveOrgGatewayCredentials, findOrgUsingWeVendMid } = await import(
+    "@/lib/payments/org-credentials"
+  );
   const { invalidateOrgProvider } = await import("@/lib/payments");
+
+  // Platform admins are bound by the same rule as charities: a WeVend merchant
+  // belongs to exactly one organization, or donations cross between charities.
+  if (d.provider === "wevend" && d.mid) {
+    const holder = await findOrgUsingWeVendMid(d.mid, d.orgId);
+    if (holder) {
+      return {
+        error: `That merchant ID is already connected to ${holder.name}. Disconnect it there first.`,
+        fields: { mid: "Already connected to another organization" },
+      };
+    }
+  }
 
   await saveOrgGatewayCredentials(
     d.orgId,

@@ -120,9 +120,58 @@ export async function loadOrgGatewayCredentials(orgId: string): Promise<Credenti
     where: { id: orgId },
     select: { posCredentialsRef: true },
   });
-  if (!org?.posCredentialsRef) return { status: "none" };
+  return credentialsFromRef(orgId, org?.posCredentialsRef ?? null);
+}
 
-  const plain = open(org.posCredentialsRef);
+/** The org's sealed credential blob, unopened — cheap, and changes whenever the credentials do. */
+export async function orgCredentialRef(orgId: string): Promise<string | null> {
+  const org = await adminDb.organization.findUnique({
+    where: { id: orgId },
+    select: { posCredentialsRef: true },
+  });
+  return org?.posCredentialsRef ?? null;
+}
+
+/** Normalise a merchant ID for comparison: WeVend IDs are case-insensitive, whitespace is noise. */
+export function sameMerchantId(a: string, b: string): boolean {
+  return a.trim().toUpperCase() === b.trim().toUpperCase();
+}
+
+/**
+ * Which OTHER organization, if any, is already connected to this WeVend merchant?
+ *
+ * Under the organization Global Token, a connect proves only that the MID exists
+ * somewhere under KindPath's WeVend organization — not that it belongs to the org
+ * entering it. Without this check two KindPath organizations could be bound to
+ * the same merchant, and one charity's donations would settle into another's
+ * account. A merchant may be connected to exactly one organization.
+ *
+ * Credentials are sealed, so this opens each connected org's blob. Fine at the
+ * scale of charities on one platform; a unique column would replace it at scale.
+ */
+export async function findOrgUsingWeVendMid(
+  mid: string,
+  exceptOrgId: string
+): Promise<{ id: string; name: string } | null> {
+  const orgs = await adminDb.organization.findMany({
+    where: { posCredentialsRef: { not: null }, NOT: { id: exceptOrgId } },
+    select: { id: true, name: true, posCredentialsRef: true },
+  });
+  for (const o of orgs) {
+    const plain = o.posCredentialsRef ? open(o.posCredentialsRef) : null;
+    const creds = plain ? parseCredentials(plain) : null;
+    if (creds?.provider === "wevend" && sameMerchantId(creds.mid, mid)) {
+      return { id: o.id, name: o.name };
+    }
+  }
+  return null;
+}
+
+/** Open and validate a sealed credential blob. */
+export function credentialsFromRef(orgId: string, ref: string | null): CredentialLoad {
+  if (!ref) return { status: "none" };
+
+  const plain = open(ref);
   if (!plain) {
     const reason = "stored gateway credentials could not be decrypted (CREDENTIALS_KEY changed?)";
     captureError(new Error(reason), { source: "payments.loadOrgGatewayCredentials", orgId });
