@@ -31,8 +31,9 @@ export default async function GivingPage() {
             <CardHeader>
               <CardTitle>Your public donation page</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Share this link or QR code. Anyone can give without an account — they enter their
-                name and address right after paying, and a receipt is generated automatically.
+                Share this link or QR code. Anyone can give without an account — they only need an
+                email address, and their receipt arrives by email. Shared links preview with your
+                name, logo and colour.
               </p>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
