@@ -1,5 +1,6 @@
 "use client";
 
+import { startPayment } from "@/lib/payment-action";
 import { useState } from "react";
 import { useFormState } from "react-dom";
 import { Ticket, CreditCard, Lock, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
@@ -37,14 +38,16 @@ export function EventCheckout({
     if (!tt) return;
     setPayError(null);
     setCharging(true);
-    const res = await beginHostedTicketPurchase({
-      slug: org.slug,
-      amount: total,
-      eventId,
-      ticketTypeId: ttId,
-      quantity: qty,
-      description: `${qty}× ${tt.name}`,
-    });
+    const res = await startPayment(() =>
+      beginHostedTicketPurchase({
+        slug: org.slug,
+        amount: total,
+        eventId,
+        ticketTypeId: ttId,
+        quantity: qty,
+        description: `${qty}× ${tt.name}`,
+      })
+    );
     if (res.ok) {
       window.location.assign(res.redirectTo);
     } else {

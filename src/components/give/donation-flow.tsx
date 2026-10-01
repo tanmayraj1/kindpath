@@ -1,5 +1,6 @@
 "use client";
 
+import { startPayment } from "@/lib/payment-action";
 import { useState } from "react";
 import { useFormState } from "react-dom";
 import { Heart, CreditCard, Lock, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
@@ -71,13 +72,15 @@ export function DonationFlow({
   async function payHosted() {
     setPayError(null);
     setCharging(true);
-    const res = await beginHostedDonation({
-      slug: org.slug,
-      amount: effectiveAmount,
-      fundId: fundId !== "none" ? fundId : undefined,
-      campaignId: campaign?.id,
-      frequency,
-    });
+    const res = await startPayment(() =>
+      beginHostedDonation({
+        slug: org.slug,
+        amount: effectiveAmount,
+        fundId: fundId !== "none" ? fundId : undefined,
+        campaignId: campaign?.id,
+        frequency,
+      })
+    );
     if (res.ok) {
       window.location.assign(res.redirectTo);
     } else {

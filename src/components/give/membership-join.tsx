@@ -1,5 +1,6 @@
 "use client";
 
+import { startPayment } from "@/lib/payment-action";
 import { useState } from "react";
 import { useFormState } from "react-dom";
 import { Users, CreditCard, Lock, Loader2, AlertCircle, CheckCircle2, Check } from "lucide-react";
@@ -35,13 +36,15 @@ export function MembershipJoin({
     if (!plan) return;
     setPayError(null);
     setCharging(true);
-    const res = await beginHostedMembership({
-      slug: org.slug,
-      amount: plan.amount,
-      planId: plan.id,
-      frequency: "monthly",
-      description: `${plan.name} membership`,
-    });
+    const res = await startPayment(() =>
+      beginHostedMembership({
+        slug: org.slug,
+        amount: plan.amount,
+        planId: plan.id,
+        frequency: "monthly",
+        description: `${plan.name} membership`,
+      })
+    );
     if (res.ok) {
       window.location.assign(res.redirectTo);
     } else {

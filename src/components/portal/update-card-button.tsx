@@ -1,5 +1,6 @@
 "use client";
 
+import { startPayment } from "@/lib/payment-action";
 import { useState, useTransition } from "react";
 import { CreditCard, Loader2 } from "lucide-react";
 import { beginCardUpdate } from "@/app/portal/actions";
@@ -36,7 +37,7 @@ export function UpdateCardButton({
         onClick={() =>
           start(async () => {
             setError(null);
-            const r = await beginCardUpdate(planId);
+            const r = await startPayment(() => beginCardUpdate(planId));
             if (!r.ok) {
               setError(r.message);
               return;

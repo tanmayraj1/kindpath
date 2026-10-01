@@ -1,5 +1,6 @@
 "use client";
 
+import { startPayment } from "@/lib/payment-action";
 import { useEffect, useState } from "react";
 import { useFormState } from "react-dom";
 import { Heart, Loader2, AlertCircle, CheckCircle2, RotateCcw } from "lucide-react";
@@ -76,12 +77,14 @@ export function KioskFlow({ org, hosted }: { org: Org; hosted: boolean }) {
     setBusy(true);
     if (hosted) {
       // Hosted gateway (WeVend): hand off to its card page; it returns to /response.
-      const res = await beginHostedDonation({
-        slug: org.slug,
-        amount,
-        fundId: fundId !== "none" ? fundId : undefined,
-        frequency: "one_time",
-      });
+      const res = await startPayment(() =>
+        beginHostedDonation({
+          slug: org.slug,
+          amount,
+          fundId: fundId !== "none" ? fundId : undefined,
+          frequency: "one_time",
+        })
+      );
       if (res.ok) {
         window.location.assign(res.redirectTo);
         return;
